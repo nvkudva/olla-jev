@@ -42,3 +42,15 @@
 - [ ] Investigate Decision-1.0 Kai near-uniform score distributions
 - [ ] Julia-1 on MPS: its runtime leaves inputs on CPU; runs on CPU for now
 - [ ] Byte-level progress in /api/pull stream (now status lines only)
+- [x] Rename project to olla-jev with src layout
+- [x] OS data folders via platformdirs; logs out of the working directory
+- [x] Packaging metadata, PEP 735 dev group, ruff, pyright, pre-commit
+- [x] `olla-jev service` (launchd, systemd user unit)
+- [x] install.sh / install.ps1 with --service and --uninstall; tested locally on macOS
+- [x] CHANGELOG, CONTRIBUTING, NOTICE, CI workflow
+- [ ] Create GitHub repo nvkudva/olla-jev and push (needs user go-ahead)
+- [ ] Test install.sh piped from GitHub and install.ps1 on Windows once the repo exists
+- [ ] Verify CI on GitHub runners (llama-cpp-python builds from source on Linux and Windows)
+- [ ] PyPI release with trusted publishing on a version tag
+- [ ] Shell completion (optional)
+- [ ] Rename the local project folder from free-jev-server to olla-jev

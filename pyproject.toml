@@ -53,6 +53,7 @@ dev = [
     "typesafe-sdk==0.7.0",
     "ruff==0.16.9",
     "pyright==1.1.414",
+    "pre-commit==4.5.1",
 ]
 
 [build-system]

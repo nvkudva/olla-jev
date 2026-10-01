@@ -13,20 +13,40 @@ A local server that runs **System One decision models** from Hugging Face behind
 - Pick a model with the request's `model` field. Models load on first use and unload when idle.
 - Commands mirror Ollama's: `serve`, `run`, `pull`, `list`, `ps`, `show`, `rm`, `stop`, `cp`.
 
+olla-jev is an independent project. It is not affiliated with or endorsed by Ollama or TypeSafe.
+
+## Install
+
+macOS and Linux:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/nvkudva/olla-jev/main/install.sh | sh
+```
+
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/nvkudva/olla-jev/main/install.ps1 | iex
+```
+
+- The script installs [uv](https://docs.astral.sh/uv/) if it is missing, then installs `olla-jev`
+  as a command in its own Python 3.12 environment (`uv tool install`).
+- Add `--service` (`… | sh -s -- --service`) to also run the server in the background at every
+  login: a launchd agent on macOS, a systemd user unit on Linux.
+- Already have uv? `uv tool install git+https://github.com/nvkudva/olla-jev` does the same.
+- Uninstall with `install.sh --uninstall`. It removes the command and the service and keeps your
+  config and downloaded models.
+
 ## Quick start
 
 ```sh
-git clone https://github.com/nvkudva/olla-jev.git
-cd olla-jev
-./start.sh          # macOS, Linux
-.\start.ps1         # Windows
+olla-jev            # first run: pick a model, device and address; it downloads and serves
+olla-jev run        # in another terminal: ask the model questions
 ```
 
-- The wrappers install [uv](https://docs.astral.sh/uv/) if it is missing, run `uv sync`, then hand
-  off to the `olla-jev` CLI.
-- The first run opens a setup screen: pick a model, the device and the address. It downloads the
-  model, saves your choices and starts the server. Run `olla-jev setup` to change them later.
-- On a bare interactive run the wrapper offers once to install `olla-jev` on your PATH.
+- The setup screen lists the curated models, all under 4 GB. Run `olla-jev setup` to change your
+  choices later.
+- The demo page opens at <http://127.0.0.1:8000/demo>.
 
 ## Example
 
@@ -111,6 +131,9 @@ is loaded with `torch.load(weights_only=True)`, so the file cannot run code.
 | `rm <model>…` | delete a download (one quant of a GGUF repo, or the whole repo) |
 | `stop <model>` | unload a model now |
 | `cp <source> <name>` | give a model a short name |
+| `service install\|uninstall\|status\|logs` | run the server in the background at login |
+
+Every command has `--help` with an example.
 
 `run` uses the running server, or loads the model in its own process when none is running:
 
@@ -149,9 +172,15 @@ most likely level, noul the same as a two-option choice.
 | `OLLAJEV_MAX_LOADED_MODELS` | `1` | models in memory at once; the least recently used one unloads |
 | `OLLAJEV_MODELS` | Hugging Face cache | where weights are stored |
 | `OLLAJEV_DEVICE` | best available | force `cpu`, `mps` or `cuda` |
-| `OLLAJEV_HOME` | `~/.config/olla-jev` | config: default model, pins, trusted commits, aliases |
+| `OLLAJEV_HOME` | OS config folder | config (default model, pins, trusted commits, aliases) and logs |
 
 The model `serve` preloads stays loaded until the server stops.
+
+| | macOS | Linux | Windows |
+|---|---|---|---|
+| Config | `~/Library/Application Support/olla-jev` | `~/.config/olla-jev` | `%APPDATA%\olla-jev` |
+| Logs | `~/Library/Logs/olla-jev` | `~/.local/state/olla-jev/log` | `%LOCALAPPDATA%\olla-jev\Logs` |
+| Models | `~/.cache/huggingface/hub` | same | same |
 
 ## Known limits
 
@@ -164,7 +193,14 @@ The model `serve` preloads stays loaded until the server stops.
 
 ## Development
 
+See [CONTRIBUTING.md](CONTRIBUTING.md). In short:
+
 ```sh
-uv sync --extra dev
-uv run pytest -q
+uv sync
+uv run olla-jev --help
+uv run pytest
 ```
+
+## License
+
+Apache-2.0. kev's loader is vendored under its Apache-2.0 license; see [NOTICE](NOTICE).
