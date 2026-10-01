@@ -1,40 +1,44 @@
 - [x] Inspect bundled inference code of Julia-1, open-jev-deberta, decider-4b, kev-4b; record predict entry points
 - [x] Scaffold project from laya-server (pyproject, uv, start.sh, start.ps1, server package)
 - [x] Port wire schema and `/v1/models`, `/v1/systemone` from laya-server
-- [ ] Define adapter interface and registry with family detection
-- [ ] Implement `laya` adapter
-- [ ] Implement `bundled-package` adapter for Julia-1
-- [ ] Implement `bundled-package` adapter for open-jev-deberta-v3-large
-- [ ] Implement `bundled-package` adapter for decider-2b and decider-4b
-- [ ] Implement `peft-pointer` adapter for kev-0.8b and kev-4b
-- [ ] Config file load/save with pinned revision SHA and trusted repos
-- [ ] Textual TUI first-run flow: model, device, dtype, host, port, trust prompt
-- [ ] Download with progress via huggingface_hub
-- [ ] Port `/demo` web UI and make presets model-agnostic
-- [ ] Contract tests per adapter against typesafe-sdk
-- [ ] README
-- [ ] Verify each catalog model end to end through `/v1/systemone` and record its limits
-- [ ] Adapter limits metadata and 422 validation
-- [ ] Multi-model manager: load on demand, keep_alive unload, max_loaded_models, per-model lock
-- [ ] Model name resolver (Ollama style): repo, repo:quant case-insensitive, repo:filename, optional hf.co/ prefix, default Q4_K_M; pinned SHA per name
-- [ ] Ollama-style admin API: /api/tags, /api/ps, /api/pull, /api/show, /api/delete
-- [ ] CLI client commands: serve, run, pull, list, ps, show, rm, stop, cp
-- [ ] FREEJEV_* environment variables
-- [ ] Demo: model picker from /v1/models, per-model limit hints, model-agnostic presets
-- [ ] Interactive `run`: state prompt plus question builder in the terminal
-- [ ] Output normalisation: TypeSafe confidence formulas, legend, action, usage for every adapter
-- [ ] Verify decider-2b on MPS (fp16, own kernels); fall back to Julia-1 as default if it fails
-- [ ] Decide kev adapter approach: vendor jaredpalmer/kev at pinned commit or port readout; load head.pt with weights_only=True
-- [ ] Test Julia-1 bundled code against our transformers version (its pin is <5.1)
-- [ ] Implement Intern-Decision adapter for Intern-Decision-0.8B
-- [ ] Implement Decision-1.0 adapter for Kai-0.6B and Lex-0.6B
-- [ ] Add decider-0.8b, decider-2b, kev-0.5b, kev-0.6b, kev-0.8b to the catalog
+- [x] Define adapter interface and registry with family detection
+- [x] Implement `laya` adapter
+- [x] Implement `bundled-package` adapter for Julia-1
+- [x] Implement `bundled-package` adapter for open-jev-deberta-v3-large
+- [x] Implement `bundled-package` adapter for decider-2b and decider-4b
+- [x] Implement `peft-pointer` adapter for kev-0.8b and kev-4b
+- [x] Config file load/save with pinned revision SHA and trusted repos
+- [x] Textual TUI first-run flow: model, device, dtype, host, port, trust prompt
+- [x] Download with progress via huggingface_hub
+- [x] Port `/demo` web UI and make presets model-agnostic
+- [x] Contract tests per adapter against typesafe-sdk
+- [x] README
+- [x] Verify each catalog model end to end through `/v1/systemone` and record its limits
+- [x] Adapter limits metadata and 422 validation
+- [x] Multi-model manager: load on demand, keep_alive unload, max_loaded_models, per-model lock
+- [x] Model name resolver (Ollama style): repo, repo:quant case-insensitive, repo:filename, optional hf.co/ prefix, default Q4_K_M; pinned SHA per name
+- [x] Ollama-style admin API: /api/tags, /api/ps, /api/pull, /api/show, /api/delete
+- [x] CLI client commands: serve, run, pull, list, ps, show, rm, stop, cp
+- [x] FREEJEV_* environment variables
+- [x] Demo: model picker from /v1/models, per-model limit hints, model-agnostic presets
+- [x] Interactive `run`: state prompt plus question builder in the terminal
+- [x] Output normalisation: TypeSafe confidence formulas, legend, action, usage for every adapter
+- [x] Verify decider-2b on MPS (fp16, own kernels); fall back to Julia-1 as default if it fails
+- [x] Decide kev adapter approach: vendor jaredpalmer/kev at pinned commit or port readout; load head.pt with weights_only=True
+- [x] Test Julia-1 bundled code against our transformers version (its pin is <5.1)
+- [x] Implement Intern-Decision adapter for Intern-Decision-0.8B
+- [x] Implement Decision-1.0 adapter for Kai-0.6B and Lex-0.6B
+- [x] Add decider-0.8b, decider-2b, kev-0.5b, kev-0.6b, kev-0.8b to the catalog
 - [ ] Phase 2: support models over 4 GB (decider-4b+, kev-4b+, Open-Jev, Intern-Decision-2B/4B, Decision-1.0 Sol/Nox/Lux, JEV-9B, NeoHorse, GLiNER2.5-Decide-1B)
 - [ ] Phase 2: free-memory check before loading a model, with a clear error
 - [ ] Phase 2: GLiNER2.5-Decide adapter with a confidence policy for label-only output
 - [ ] Phase 2: OpenThai-SystemOne adapter
 - [ ] Phase 2: Bespoke-Nimble-9B adapter (LoRA on Qwen3.5-9B, ~18 GB; schema enum fields mapped to Jev questions; Mac via MLX loader)
-- [ ] llama.cpp backend for decider adapter (llama-cpp-python with Metal, decide_gguf.py readout); quant choice in TUI
-- [ ] Default model: Mapika/decider-4b-GGUF:Q4_K_M (2.7 GB); add Mapika/decider-2b-GGUF:Q4_K_M and :Q8_0 to catalog
+- [x] llama.cpp backend for decider adapter (llama-cpp-python with Metal, decide_gguf.py readout); quant choice in TUI
+- [x] Default model: Mapika/decider-4b-GGUF:Q4_K_M (2.7 GB); add Mapika/decider-2b-GGUF:Q4_K_M and :Q8_0 to catalog
 - [ ] Phase 2: NeoHorse-Jev-4B GGUF Q4_K_M with its own runtime
 - [ ] Phase 2: check onnx-community/kev-4b-ONNX q4 for pointer head; ONNX Runtime backend if usable
+- [ ] Implement `peft-pointer` adapter for kev-4b (phase 2, over 4 GB)
+- [ ] Investigate Decision-1.0 Kai near-uniform score distributions
+- [ ] Julia-1 on MPS: its runtime leaves inputs on CPU; runs on CPU for now
+- [ ] Byte-level progress in /api/pull stream (now status lines only)

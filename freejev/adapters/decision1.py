@@ -1,0 +1,44 @@
+"""llm-semantic-router/Decision-1.0-*: the repo's own modeling code through transformers' trust_remote_code."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from . import instructions_or_name
+from .base import Loaded
+
+LIMITS = {"max_options": 255, "max_levels": 10, "max_tokens": 1024}
+
+
+class _Decision1:
+    name = "decision1"
+    runs_repo_code = True
+
+
+    def limits(self, r) -> dict:
+        return LIMITS
+
+    def matches(self, repo_id: str, files: list[str]) -> bool:
+        return "decision1_system_one.py" in files
+
+    def allow_patterns(self, r) -> list[str]:
+        return ["config.json", "*.py", "native/*", "native/**/*"]
+
+    def load(self, path: str, r, device: str | None) -> Loaded:
+        from transformers import AutoModel
+
+        model = AutoModel.from_pretrained(path, trust_remote_code=True, device=device or "cpu", local_files_only=True)
+
+        def predict(state: Any, questions: dict[str, dict[str, Any]]) -> dict[str, Any]:
+            qs = {}
+            for qid, q in questions.items():
+                out = {"type": q["type"], "instructions": instructions_or_name(qid, q)}
+                if q.get("criteria") is not None:
+                    out["criteria"] = q["criteria"]
+                qs[qid] = out
+            return model.system_one(state=state, questions=qs)
+
+        return Loaded(r.name, "Decision-1.0 Vela-encoder typed-decision model", None, self.limits(r), predict)
+
+
+FAMILY = _Decision1()

@@ -1,1 +1,85 @@
 """One adapter per model family. Each turns a Jev request into that family's inference call."""
+
+from __future__ import annotations
+
+import importlib
+import sys
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+    from ..store import Resolved
+    from .base import Adapter
+
+
+class Family(Protocol):
+    name: str
+    runs_repo_code: bool  # the model repo ships Python we import; needs the user's trust first
+
+    def matches(self, repo_id: str, files: list[str]) -> bool: ...
+
+    def allow_patterns(self, r: Resolved) -> list[str] | None: ...
+
+    def limits(self, r: Resolved) -> dict[str, Any]: ...
+
+    def load(self, path: str, r: Resolved, device: str | None) -> Adapter: ...
+
+
+def families() -> list[Family]:
+    from . import decider, decision1, intern, julia, kev, laya, openjev
+
+    found = [laya.FAMILY, decider.FAMILY, julia.FAMILY, openjev.FAMILY, kev.FAMILY, intern.FAMILY, decision1.FAMILY]
+    return [f for f in found if f is not None]
+
+
+def detect(repo_id: str, files: list[str]) -> Family:
+    for family in families():
+        if family.matches(repo_id, files):
+            return family
+    names = ", ".join(f.name for f in families())
+    raise LookupError(f"{repo_id} is not a supported System One model (supported families: {names})")
+
+
+def pick_device(requested: str | None) -> str:
+    import torch
+
+    if requested:
+        return requested
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
+def import_from(root: str, module: str) -> Any:
+    """Import `module` from a model snapshot. Drops a same-named package loaded from another snapshot,
+    since bundled packages import themselves by absolute name."""
+    top = module.split(".")[0]
+    loaded = sys.modules.get(top)
+    if loaded is not None and not str(getattr(loaded, "__file__", "") or "").startswith(root):
+        for name in [n for n in sys.modules if n == top or n.startswith(top + ".")]:
+            del sys.modules[name]
+    sys.path.insert(0, root)
+    try:
+        importlib.invalidate_caches()
+        return importlib.import_module(module)
+    finally:
+        sys.path.remove(root)
+
+
+def text_state(state: Any) -> str:
+    """Models that take only text get JSON states as compact JSON text."""
+    import json
+
+    return state if isinstance(state, str) else json.dumps(state, ensure_ascii=False)
+
+
+def instructions_or_name(qid: str, q: dict[str, Any]) -> Any:
+    """Jev leaves instructions optional; most models need text. Fall back to the humanized question id."""
+    return q.get("instructions") if q.get("instructions") not in (None, "") else qid.replace("_", " ")
+
+
+def has(files: list[str], *names: str) -> bool:
+    present = {Path(f).name for f in files} | set(files)
+    return all(n in present for n in names)

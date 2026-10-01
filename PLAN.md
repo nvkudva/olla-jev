@@ -179,3 +179,17 @@ Phase 1 names: `Mapika/decider-4b-GGUF-Q4_K_M` (default), `Mapika/decider-2b-GGU
 - `:` is safe as separator: Hugging Face repo ids cannot contain `:`.
 
 Phase 1 names: `Mapika/decider-4b-GGUF:Q4_K_M` (default), `Mapika/decider-2b-GGUF:Q4_K_M`, `Mapika/decider-2b-GGUF:Q8_0`; all other names unchanged.
+
+### 2026-10-01 — Phase 1 implementation decisions
+
+- decider: uses the pinned `decider-ai` PyPI release (same code the repos bundle, plus the GGUF engine), so no repo code is imported. GGUF runs on llama.cpp with Metal.
+- kev: vendored kev's loader (`api.py`, `model.py`, `checkpoint.py`, `device.py`) from GitHub at commit 90512f1 into `freejev/_vendor/kev`, instead of porting the readout. Reason: the readout depends on kev's hybrid-cache prefix logic; a port would diverge. kev's own package pins `torch<2.9`, so it cannot be a dependency. `head.pt` loads with `weights_only=True`.
+- Julia-1: its fast encoder path calls a ModernBERT private method removed in transformers 5.1; the adapter disables that patch. Runs on CPU because its runtime moves inputs only for CUDA.
+- Decision-1.0 Lex is fine-tuned from Kai (Vela encoder), not Qwen3.5 as first noted.
+- Families that import repo code (Julia, open-jev, Intern-Decision, Decision-1.0) need trust per repo + commit, stored in config.
+- Config is JSON (`~/.config/free-jev-server/config.json`), not TOML: it holds nested pins, trust and aliases, and the stdlib writes JSON.
+- Confidence is always computed with TypeSafe's formulas in `normalize.py`, whatever the model reports, so it means the same across models. Noul confidence is the two-option choice formula.
+- Default aliases `jev-latest` and `laya` mean the default model, for stock Jev / laya-server clients.
+- The model `serve` preloads stays loaded (pinned); others follow keep_alive. Max loaded models defaults to 1.
+- `cp` creates a name alias in config; it copies no files.
+- `serve` scans for a free port from 8000 unless a port is given, and records the bound URL so other commands find it.

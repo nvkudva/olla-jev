@@ -1,23 +1,24 @@
-"""Jev-compatible (TypeSafe System One) HTTP API, served by whichever adapter is loaded."""
+"""Jev-compatible (TypeSafe System One) HTTP API, plus the demo page and the Ollama-style admin API."""
 
 from __future__ import annotations
 
-import threading
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from importlib.metadata import version
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import Body, FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from .adapters.base import Adapter
+from . import admin, normalize, presets
+from .manager import Manager, NotDownloaded, NotTrusted, default_model
 
 JSONContent = str | dict[str, Any] | list[Any]
 
-# typesafe-sdk's DEFAULT_MODEL. A client that never passes `model=` sends it, so it resolves to
-# whichever model this process serves.
-DEFAULT_ALIAS = "jev-latest"
 
 
 class NoulCriteria(BaseModel):
@@ -48,26 +49,35 @@ Question = Annotated[NoulQuestion | ChoiceQuestion | ScoreQuestion, Field(discri
 
 class SystemOneRequest(BaseModel):
     state: JSONContent
-    model: str = DEFAULT_ALIAS
+    model: str = "jev-latest"  # manager.DEFAULT_ALIASES: means the default model
     questions: dict[str, Question] = Field(min_length=1)
 
 
-# One forward pass at a time. On MPS concurrent forwards abort the process with a Metal
-# command-buffer assertion, so this is a correctness requirement, not a throttle.
-_lock = threading.Lock()
-_adapter: Adapter | None = None
+manager: Manager | None = None
 
-app = FastAPI(title="free-jev-server", version=version("free-jev-server"))
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
-def use_adapter(adapter: Adapter) -> None:
-    """Pick the model this process serves. Call before startup."""
-    global _adapter
-    _adapter = adapter
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    global manager
+    manager = Manager()
+    if preload:
+        # Load before uvicorn accepts connections, so a reply from any route means ready to decide.
+        manager.get(preload, keep_alive=-1 if pin_preload else None)
+    yield
+    manager.unload_all()
 
 
-def _invalid(loc: list[str | int], msg: str, kind: str = "value_error") -> JSONResponse:
-    return JSONResponse(status_code=422, content={"detail": [{"loc": loc, "msg": msg, "type": kind}]})
+preload: str | None = None  # set by `serve` before startup
+pin_preload = False
+
+app = FastAPI(title="free-jev-server", version=version("free-jev-server"), lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+def _invalid(loc: list[str | int], msg: str, kind: str = "value_error", status: int = 422) -> JSONResponse:
+    return JSONResponse(status_code=status, content={"detail": [{"loc": loc, "msg": msg, "type": kind}]})
 
 
 def _wire(q: Question) -> dict[str, Any]:
@@ -77,31 +87,60 @@ def _wire(q: Question) -> dict[str, Any]:
     return out
 
 
+def _model_error(exc: Exception) -> JSONResponse:
+    if isinstance(exc, NotDownloaded):
+        return _invalid(["body", "model"], str(exc), "model_not_found", 404)
+    if isinstance(exc, NotTrusted):
+        return _invalid(["body", "model"], str(exc), "model_not_trusted", 403)
+    return _invalid(["body", "model"], str(exc))
+
+
 @app.get("/")
 async def health() -> dict[str, Any]:
-    return {"status": "ok", "model": _adapter.name if _adapter else None}
+    return {"status": "ok", "default_model": default_model(), "loaded": [s.name for s in manager.loaded()], "ui": "/demo"}
+
+
+@app.get("/demo")
+async def demo() -> FileResponse:
+    return FileResponse(STATIC_DIR / "demo.html", media_type="text/html")
+
+
+@app.get("/ui/presets")
+async def ui_presets() -> dict[str, Any]:
+    return presets.examples()
 
 
 @app.get("/v1/models")
-async def list_models() -> dict[str, Any]:
-    if _adapter is None:
-        return {"models": []}
-    return {"models": [{"name": _adapter.name, "description": _adapter.description, "release_date": _adapter.released}]}
+def list_models() -> dict[str, Any]:
+    """Every downloaded model, default first. TypeSafe clients read name, description and release_date."""
+    default = default_model()
+    out = []
+    for m in admin.tags():
+        out.append({"name": m["name"], "description": m["description"], "release_date": m["release_date"],
+                    "default": m["name"] == default, "limits": m["limits"]})
+    out.sort(key=lambda m: not m["default"])
+    return {"models": out}
 
 
 @app.post("/v1/systemone")
 def system_one(req: Annotated[SystemOneRequest, Body()]) -> Any:
-    if _adapter is None:
-        return JSONResponse(status_code=503, content={"detail": [{"loc": [], "msg": "no model loaded", "type": "unavailable"}]})
-    if req.model not in (_adapter.name, DEFAULT_ALIAS):
-        return _invalid(["body", "model"], f"this server serves {_adapter.name!r}, not {req.model!r}")
     questions = {name: _wire(q) for name, q in req.questions.items()}
     try:
-        with _lock:
-            result = _adapter.system_one(req.state, questions)
+        slot, result = manager.run(req.model, req.state, questions)
+        answers = normalize.answers(questions, result["answers"])
+    except (NotDownloaded, NotTrusted) as exc:
+        return _model_error(exc)
     except ValueError as exc:
         return _invalid(["body", "questions"], str(exc))
-    return {"model": _adapter.name, "answers": result["answers"], "usage": result.get("usage", {"input_tokens": 0, "output_tokens": 0})}
+    usage = result.get("usage") or {}
+    return {
+        "model": slot.name,
+        "answers": answers,
+        "usage": {"input_tokens": int(usage.get("input_tokens", 0)), "output_tokens": int(usage.get("output_tokens", 0))},
+    }
+
+
+app.include_router(admin.router)
 
 
 @app.exception_handler(StarletteHTTPException)
