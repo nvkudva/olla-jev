@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -14,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import admin, normalize, presets
+from . import admin, config, normalize, presets
 from .manager import Manager, NotDownloaded, NotTrusted, default_model
 
 JSONContent = str | dict[str, Any] | list[Any]
@@ -76,9 +78,43 @@ def current_manager() -> Manager:
 
 preload: str | None = None  # set by `serve` before startup
 pin_preload = False
+# Host header names `serve` accepts when bound to a loopback address; blocks DNS rebinding.
+# None means no check, as for a non-loopback bind (which requires an API key instead).
+allowed_hosts: frozenset[str] | None = None
+OPEN_PATHS = ("/", "/demo", "/static/")  # the health probe and the demo page need no key
 
-app = FastAPI(title="olla-jev", version=version("olla-jev"), lifespan=lifespan)
+log = logging.getLogger(__name__)
+
+try:
+    _version = version("olla-jev")
+except PackageNotFoundError:  # running from a source tree that was never installed
+    _version = "0+unknown"
+
+app = FastAPI(title="olla-jev", version=_version, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+def _hostname(header: str) -> str:
+    """`localhost:8000` -> `localhost`, `[::1]:8000` -> `[::1]`."""
+    header = header.lower()
+    if header.startswith("["):
+        return header[: header.find("]") + 1]
+    return header.partition(":")[0]
+
+
+@app.middleware("http")
+async def guard(request: Request, call_next: Any) -> Any:
+    if allowed_hosts is not None:
+        host = _hostname(request.headers.get("host", ""))
+        if host not in allowed_hosts:
+            return _invalid([], "host not allowed", "forbidden_host", 403)
+    key = config.api_key()
+    path = request.url.path
+    if key and path != "/" and not path.startswith(OPEN_PATHS[1:]):
+        sent = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+        if not secrets.compare_digest(sent.encode(), key.encode()):
+            return _invalid([], "missing or wrong API key", "unauthorized", 401)
+    return await call_next(request)
 
 
 def _invalid(loc: list[str | int], msg: str, kind: str = "value_error", status: int = 422) -> JSONResponse:
@@ -175,6 +211,7 @@ def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
 
 @app.exception_handler(Exception)
 def _unhandled(request: Request, exc: Exception) -> JSONResponse:
+    log.error("unhandled error on %s %s", request.method, request.url.path, exc_info=exc)
     return JSONResponse(
         status_code=500, content={"detail": [{"loc": ["body"], "msg": "internal error", "type": "internal_error"}]}
     )

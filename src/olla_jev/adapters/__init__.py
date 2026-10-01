@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import sys
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -52,20 +53,24 @@ def pick_device(requested: str | None) -> str:
     return "cpu"
 
 
+_import_lock = threading.Lock()
+
+
 def import_from(root: str, module: str) -> Any:
     """Import `module` from a model snapshot. Drops a same-named package loaded from another snapshot,
     since bundled packages import themselves by absolute name."""
     top = module.split(".")[0]
-    loaded = sys.modules.get(top)
-    if loaded is not None and not str(getattr(loaded, "__file__", "") or "").startswith(root):
-        for name in [n for n in sys.modules if n == top or n.startswith(top + ".")]:
-            del sys.modules[name]
-    sys.path.insert(0, root)
-    try:
-        importlib.invalidate_caches()
-        return importlib.import_module(module)
-    finally:
-        sys.path.remove(root)
+    with _import_lock:  # sys.path and sys.modules are process-wide
+        loaded = sys.modules.get(top)
+        if loaded is not None and not str(getattr(loaded, "__file__", "") or "").startswith(root):
+            for name in [n for n in sys.modules if n == top or n.startswith(top + ".")]:
+                del sys.modules[name]
+        sys.path.insert(0, root)
+        try:
+            importlib.invalidate_caches()
+            return importlib.import_module(module)
+        finally:
+            sys.path.remove(root)
 
 
 def text_state(state: Any) -> str:

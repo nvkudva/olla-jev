@@ -18,7 +18,7 @@ A local server that runs **System One decision models** from Hugging Face behind
 
 > **Already calling TypeSafe or Jev? This is a drop-in replacement.** Point `TYPESAFE_BASE_URL` at
 > this server and the stock `typesafe-sdk` keeps working: same routes, same request and response
-> shapes, no API key. The answers come from a model on your machine instead of the hosted service.
+> shapes, no API key (unless you set `OLLAJEV_API_KEY`). The answers come from a model on your machine instead of the hosted service.
 
 - A decision model writes no text. You send one **state** and any number of typed **questions**.
 - You get back a probability for each question: `noul` (yes/no), `choice` (pick one option) or
@@ -68,11 +68,10 @@ irm https://raw.githubusercontent.com/nvkudva/olla-jev/main/install.ps1 -OutFile
 - Installed with uv directly? Run `olla-jev service uninstall`, then `uv tool uninstall olla-jev`.
 - Your config, logs and downloaded models are kept. To remove them too, delete these folders:
 
-| | macOS | Linux | Windows |
-|---|---|---|---|
-| Config | `~/Library/Application Support/olla-jev` | `~/.config/olla-jev` | `%LOCALAPPDATA%\olla-jev` |
-| Logs | `~/Library/Logs/olla-jev` | `~/.local/state/olla-jev` | `%LOCALAPPDATA%\olla-jev\Logs` |
-| Models | `~/.cache/huggingface/hub/models--<user>--<repo>` | same | same |
+| | Path |
+|---|---|
+| Config and logs | `~/.olla-jev` |
+| Models | `~/.cache/huggingface/hub/models--<user>--<repo>` |
 
 The models folder is the shared Hugging Face cache, which other tools use too. Delete only the
 `models--…` folders of the models you pulled (`olla-jev list` shows them), or run `olla-jev rm <model>`
@@ -158,6 +157,23 @@ commit of its first download and never updates by itself.
 kev's loader is vendored from GitHub at a pinned commit (`olla_jev/_vendor/kev`), and its `head.pt`
 is loaded with `torch.load(weights_only=True)`, so the file cannot run code.
 
+Trust is a CLI decision only: `POST /api/pull` never trusts a repo, so a network client cannot
+make the server run new code. See [SECURITY.md](SECURITY.md).
+
+### Network exposure
+
+The server listens on `127.0.0.1` and accepts only `localhost`, `127.0.0.1` and `[::1]` as Host,
+which blocks DNS-rebinding from a web page. To listen elsewhere, set a key; without one the server
+refuses to start:
+
+```sh
+OLLAJEV_API_KEY=$(openssl rand -hex 24) OLLAJEV_HOST=0.0.0.0:8000 olla-jev serve
+export TYPESAFE_API_KEY=<the same key>
+```
+
+With a key set, `/v1/*` and `/api/*` need `Authorization: Bearer <key>`; the `/demo` page cannot
+send one, so use it without a key. Put TLS in front (a reverse proxy) before exposing it beyond a LAN.
+
 ## Commands
 
 | Command | What it does |
@@ -189,10 +205,10 @@ q3>
 
 ## API
 
-- **Jev / System One:** `GET /v1/models`, `POST /v1/systemone`. Bearer headers are accepted and
-  ignored.
+- **Jev / System One:** `GET /v1/models`, `POST /v1/systemone`. Bearer headers are ignored
+  unless `OLLAJEV_API_KEY` is set.
 - **Model management, Ollama style:** `GET /api/tags`, `GET /api/ps`, `POST /api/pull`
-  (`{"model", "stream", "trust"}`, NDJSON progress), `POST /api/show`, `DELETE /api/delete`,
+  (`{"model", "stream"}`, NDJSON progress), `POST /api/show`, `DELETE /api/delete`,
   `POST /api/copy`, `POST /api/stop`.
 - **Demo page:** `/demo` — a request editor with a model picker, five ready-made examples and a log
   of answers. `/ui/presets` serves the examples.
@@ -213,15 +229,14 @@ most likely level, noul the same as a two-option choice.
 | `OLLAJEV_MAX_LOADED_MODELS` | `1` | models in memory at once; the least recently used one unloads |
 | `OLLAJEV_MODELS` | Hugging Face cache | where weights are stored |
 | `OLLAJEV_DEVICE` | best available | force `cpu`, `mps` or `cuda` |
-| `OLLAJEV_HOME` | OS config folder | config (default model, pins, trusted commits, aliases) and logs |
+| `OLLAJEV_HOME` | `~/.olla-jev` | config (default model, pins, trusted commits, aliases) and `logs/` |
+| `OLLAJEV_API_KEY` | none | bearer token every API call must send; required to listen on a non-loopback address |
 
 The model `serve` preloads stays loaded until the server stops.
 
-| | macOS | Linux | Windows |
-|---|---|---|---|
-| Config | `~/Library/Application Support/olla-jev` | `~/.config/olla-jev` | `%LOCALAPPDATA%\olla-jev` |
-| Logs | `~/Library/Logs/olla-jev` | `~/.local/state/olla-jev/log` | `%LOCALAPPDATA%\olla-jev\Logs` |
-| Models | `~/.cache/huggingface/hub` | same | same |
+Config is `~/.olla-jev/config.json`, logs are `~/.olla-jev/logs/server.log`, and weights live in the
+shared Hugging Face cache (`~/.cache/huggingface/hub`). A config left by 0.1 in the old OS folder
+is read once and moved on the next save.
 
 ## Known limits
 

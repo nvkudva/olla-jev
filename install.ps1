@@ -10,13 +10,14 @@ param(
   [switch]$Uninstall
 )
 $ErrorActionPreference = "Stop"
-$RepoUrl = "git+https://github.com/nvkudva/olla-jev"
+# Pinned to a release tag, so a piped install never builds an unreviewed branch tip.
+$RepoUrl = "git+https://github.com/nvkudva/olla-jev@v0.1.0"
 
 function Say($msg) { Write-Host "==> $msg" }
 
 if ($Uninstall) {
   if (Get-Command uv -ErrorAction SilentlyContinue) { uv tool uninstall olla-jev }
-  Say "kept your config (%LOCALAPPDATA%\olla-jev) and models (~\.cache\huggingface\hub)"
+  Say "kept your config (~\.olla-jev) and models (~\.cache\huggingface\hub)"
   exit 0
 }
 

@@ -9,7 +9,14 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-PREFIXES = ("https://", "http://", "hf.co/", "huggingface.co/")
+PREFIXES = (
+    "https://huggingface.co/",
+    "https://hf.co/",
+    "http://huggingface.co/",
+    "http://hf.co/",
+    "hf.co/",
+    "huggingface.co/",
+)
 # Ollama's order when a repo has no Q4_K_M: the first quant found, best compromise first.
 QUANT_PREFERENCE = ["Q4_K_M", "Q4_K_S", "Q4_0", "IQ4_XS", "Q5_K_M", "Q5_K_S", "Q6_K", "Q8_0"]
 _REPO = re.compile(r"^[\w.-]+/[\w.-]+$")
@@ -30,8 +37,9 @@ def parse(name: str) -> Ref:
     for prefix in PREFIXES:
         if text.lower().startswith(prefix):
             text = text[len(prefix) :]
+            break
     repo_id, _, tag = text.partition(":")
-    if not _REPO.match(repo_id):
+    if not _REPO.match(repo_id) or ".." in repo_id or any(part.strip(".") == "" for part in repo_id.split("/")):
         raise ValueError(f"not a Hugging Face model name: {name!r} (expected <user>/<repo>[:<quant>])")
     return Ref(repo_id, tag or None)
 

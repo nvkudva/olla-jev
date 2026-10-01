@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- `POST /api/pull` no longer accepts `trust`; trusting a repo's Python code is CLI-only.
+- `OLLAJEV_API_KEY` requires a bearer token on every API route. Listening on a non-loopback
+  address without it is refused. On loopback, only `localhost`, `127.0.0.1` and `[::1]` are
+  accepted as Host (DNS-rebinding guard).
+- Model names reject `.`/`..` segments and foreign URL hosts.
+
+### Changed
+
+- Config and logs now live in `~/.olla-jev` (override with `OLLAJEV_HOME`). A config in the old OS
+  folder is read once and moved on the next save.
+- Dependencies use compatible ranges in `pyproject.toml`; `uv.lock` keeps exact versions.
+- Installers pin to a release tag.
+
+### Fixed
+
+- Config writes are locked and atomic; a corrupt `config.json` is moved to `config.json.bad`.
+- A request can no longer run on a model the reaper just unloaded; eviction reads the slot table
+  under its lock.
+- Two pulls of the same repo cannot run at once; unexpected pull errors are logged, not sent to the client.
+- Repo-code imports are serialised.
+
 ### Added
 
 - Jev / System One API (`GET /v1/models`, `POST /v1/systemone`), drop-in for `typesafe-sdk`.

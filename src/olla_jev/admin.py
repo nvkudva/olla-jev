@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import queue
 import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -18,7 +20,10 @@ from .catalog import CATALOG
 from .manager import canonical, lookup
 from .names import quant_of
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
+_pulling: set[str] = set()
+_pulling_guard = threading.Lock()
 DESCRIPTIONS = {e.name: e.description for e in CATALOG}
 
 
@@ -29,7 +34,6 @@ class ModelRef(BaseModel):
 class PullRequest(BaseModel):
     model: str
     stream: bool = True
-    trust: bool = False
 
 
 class CopyRequest(BaseModel):
@@ -95,7 +99,7 @@ def api_tags() -> dict[str, Any]:
 def api_ps() -> dict[str, Any]:
     from . import api
 
-    now = __import__("time").monotonic()
+    now = time.monotonic()
     models = []
     for slot in api.current_manager().loaded():
         expires = (
@@ -141,19 +145,27 @@ def api_pull(req: PullRequest) -> Any:
     events: queue.Queue[dict[str, Any] | None] = queue.Queue()
 
     def work() -> None:
+        key = None
         try:
             events.put({"status": "pulling manifest"})
             r = store.resolve(lookup(req.model))
             if r.family.runs_repo_code and not store.is_trusted(r):
-                if not req.trust:
-                    events.put(
-                        {
-                            "error": f"{canonical(r)} runs Python code from its repo; pull again with trust=true "
-                            f"after reviewing https://huggingface.co/{r.repo_id}/tree/{r.revision}"
-                        }
-                    )
-                    return
-                store.trust(r)
+                events.put(
+                    {
+                        "error": f"{canonical(r)} runs Python code from its repo; trust is not available over HTTP. "
+                        f"Review https://huggingface.co/{r.repo_id}/tree/{r.revision}, then run: "
+                        f"olla-jev pull {canonical(r)} --trust"
+                    }
+                )
+                return
+            key = r.repo_id
+            with _pulling_guard:
+                busy = key in _pulling
+                _pulling.add(key)
+            if busy:
+                key = None
+                events.put({"error": f"{r.repo_id} is already being pulled"})
+                return
             events.put({"status": f"downloading {r.repo_id}@{r.revision[:12]}", "digest": r.revision})
             store.download(r)
             prefetch = getattr(r.family, "prefetch", None)
@@ -161,9 +173,15 @@ def api_pull(req: PullRequest) -> Any:
                 events.put({"status": "downloading base model"})
                 prefetch(store.local_path(r))
             events.put({"status": "success", "model": canonical(r)})
-        except Exception as exc:  # reported to the client as an error line
+        except (LookupError, ValueError) as exc:  # bad name or unknown model: safe to show
             events.put({"error": str(exc)})
+        except Exception:
+            log.exception("pull of %s failed", req.model)
+            events.put({"error": "pull failed; see the server log"})
         finally:
+            if key:
+                with _pulling_guard:
+                    _pulling.discard(key)
             events.put(None)
 
     threading.Thread(target=work, daemon=True).start()
@@ -182,10 +200,9 @@ def api_pull(req: PullRequest) -> Any:
 def api_delete(req: ModelRef) -> Any:
     from . import api
 
-    aliases = config.load().get("aliases", {})
-    if req.model in aliases:
-        aliases.pop(req.model)
-        config.update(aliases=aliases)
+    with config.edit() as data:
+        removed = data.get("aliases", {}).pop(req.model, None)
+    if removed is not None:
         return {"status": "success"}
     try:
         r = store.resolve(lookup(req.model), online=False)
@@ -206,9 +223,9 @@ def api_delete(req: ModelRef) -> Any:
 
 @router.post("/copy")
 def api_copy(req: CopyRequest) -> Any:
-    aliases = config.load().get("aliases", {})
-    aliases[req.destination] = lookup(req.source)
-    config.update(aliases=aliases)
+    target = lookup(req.source)
+    with config.edit() as data:
+        data.setdefault("aliases", {})[req.destination] = target
     return {"status": "success"}
 
 

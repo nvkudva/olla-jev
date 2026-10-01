@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+import logging
 import os
+import tempfile
+import threading
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import platformdirs
+
+log = logging.getLogger(__name__)
+_lock = threading.RLock()
 
 DEFAULT_MODEL = "Mapika/decider-4b-GGUF:Q4_K_M"
 DEFAULT_PORT = 8000
@@ -17,17 +25,13 @@ APP = "olla-jev"
 
 
 def config_dir() -> Path:
-    """OLLAJEV_HOME, else the OS config folder: ~/.config/olla-jev (Linux),
-    ~/Library/Application Support/olla-jev (macOS), %APPDATA%\\olla-jev (Windows)."""
+    """OLLAJEV_HOME, else ~/.olla-jev."""
     home = os.environ.get("OLLAJEV_HOME")
-    return Path(home) if home else Path(platformdirs.user_config_dir(APP, appauthor=False))
+    return Path(home) if home else Path.home() / ".olla-jev"
 
 
 def log_dir() -> Path:
-    """OLLAJEV_HOME/logs, else the OS log folder: ~/.local/state/olla-jev/log (Linux),
-    ~/Library/Logs/olla-jev (macOS)."""
-    home = os.environ.get("OLLAJEV_HOME")
-    return Path(home) / "logs" if home else Path(platformdirs.user_log_dir(APP, appauthor=False))
+    return config_dir() / "logs"
 
 
 def config_path() -> Path:
@@ -47,6 +51,15 @@ def host() -> tuple[str, int]:
         addr, port = value.split(":")
         return addr or "127.0.0.1", int(port)
     return value, DEFAULT_PORT
+
+
+def api_key() -> str | None:
+    """OLLAJEV_API_KEY: when set, the server requires `Authorization: Bearer <key>` on every API route."""
+    return os.environ.get("OLLAJEV_API_KEY") or None
+
+
+def is_loopback(addr: str) -> bool:
+    return addr in ("localhost", "::1") or addr.startswith("127.")
 
 
 def models_dir() -> str | None:
@@ -79,23 +92,53 @@ def parse_duration(text: str | float | int) -> float:
     return float(text)
 
 
+def _legacy_path() -> Path:
+    """Where releases before 0.2 kept config.json: the OS config folder."""
+    return Path(platformdirs.user_config_dir(APP, appauthor=False)) / "config.json"
+
+
 def load() -> dict[str, Any]:
+    path = config_path()
+    if not path.exists() and "OLLAJEV_HOME" not in os.environ and _legacy_path().exists():
+        path = _legacy_path()  # first run after the move to ~/.olla-jev; the next save writes the new file
     try:
-        return json.loads(config_path().read_text())
+        return json.loads(path.read_text())
     except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError:
+        backup = path.with_suffix(".json.bad")
+        path.replace(backup)
+        log.warning("%s is not valid JSON; moved it to %s and started with empty settings", path, backup)
         return {}
 
 
 def save(data: dict[str, Any]) -> None:
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
-    tmp.replace(path)
+    with _lock:
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix="config.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as f:
+                f.write(json.dumps(data, indent=2, sort_keys=True) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
+            raise
+
+
+@contextlib.contextmanager
+def edit() -> Iterator[dict[str, Any]]:
+    """Read, change and save the config as one step, so threads cannot overwrite each other's changes."""
+    with _lock:
+        data = load()
+        yield data
+        save(data)
 
 
 def update(**fields: Any) -> dict[str, Any]:
-    data = load()
-    data.update(fields)
-    save(data)
+    with edit() as data:
+        data.update(fields)
     return data

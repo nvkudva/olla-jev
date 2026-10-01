@@ -44,11 +44,10 @@ def pins() -> dict[str, str]:
 
 
 def _pin(repo_id: str, sha: str, created: str | None) -> None:
-    data = config.load()
-    data.setdefault("pins", {})[repo_id] = sha
-    if created:
-        data.setdefault("released", {})[repo_id] = created
-    config.save(data)
+    with config.edit() as data:
+        data.setdefault("pins", {})[repo_id] = sha
+        if created:
+            data.setdefault("released", {})[repo_id] = created
 
 
 def released(repo_id: str) -> str | None:
@@ -154,11 +153,10 @@ def delete(repo_id: str) -> int:
         strategy = info.delete_revisions(*revisions)
         freed = strategy.expected_freed_size
         strategy.execute()
-    data = config.load()
-    data.get("pins", {}).pop(repo_id, None)
-    data.get("released", {}).pop(repo_id, None)
-    data["trusted"] = [t for t in data.get("trusted", []) if not t.startswith(f"{repo_id}@")]
-    config.save(data)
+    with config.edit() as data:
+        data.get("pins", {}).pop(repo_id, None)
+        data.get("released", {}).pop(repo_id, None)
+        data["trusted"] = [t for t in data.get("trusted", []) if not t.startswith(f"{repo_id}@")]
     return freed
 
 
@@ -167,8 +165,7 @@ def is_trusted(r: Resolved) -> bool:
 
 
 def trust(r: Resolved) -> None:
-    data = config.load()
     key = f"{r.repo_id}@{r.revision}"
-    if key not in data.setdefault("trusted", []):
-        data["trusted"].append(key)
-    config.save(data)
+    with config.edit() as data:
+        if key not in data.setdefault("trusted", []):
+            data["trusted"].append(key)
