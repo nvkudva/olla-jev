@@ -1,5 +1,5 @@
 # Thin wrapper: make sure uv is available, then hand off to the CLI.
-# Everything else lives in freejev/cli.py so macOS, Linux and Windows share one code path.
+# Everything else lives in src/olla_jev/cli.py so macOS, Linux and Windows share one code path.
 $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
 
@@ -13,12 +13,12 @@ Write-Host "==> Setting up Python 3.12 and dependencies"
 uv sync --quiet
 
 # Offer the global install, but only on a bare interactive run — see the comment in start.sh.
-if ($args.Count -eq 0 -and [Environment]::UserInteractive -and -not ((uv tool list 2>$null) -match '^free-jev-server')) {
-  $reply = Read-Host "`nInstall free-jev-server globally, so you can run it from anywhere? [y/N]"
+if ($args.Count -eq 0 -and [Environment]::UserInteractive -and -not ((uv tool list 2>$null) -match '^olla-jev')) {
+  $reply = Read-Host "`nInstall olla-jev globally, so you can run it from anywhere? [y/N]"
   if ($reply -match '^[yY]') {
     uv tool install --editable . --quiet
     if ($LASTEXITCODE -eq 0) {
-      Write-Host "==> Installed. From now on just run:  free-jev-server"
+      Write-Host "==> Installed. From now on just run:  olla-jev"
     } else {
       Write-Host "==> Install failed; carrying on with this checkout."
     }
@@ -26,4 +26,4 @@ if ($args.Count -eq 0 -and [Environment]::UserInteractive -and -not ((uv tool li
   Write-Host ""
 }
 
-uv run free-jev-server @args
+uv run olla-jev @args

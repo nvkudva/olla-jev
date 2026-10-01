@@ -80,11 +80,11 @@ def resolve(name: str, *, online: bool = True) -> Resolved:
             gguf = _pick(ref, files)
         except ValueError:
             if not online:
-                raise LookupError(f"{ref.name} is not downloaded; run: free-jev-server pull {ref.name}") from None
+                raise LookupError(f"{ref.name} is not downloaded; run: olla-jev pull {ref.name}") from None
             files = None  # a quant of a downloaded repo that is not on disk yet
     if files is None:
         if not online:
-            raise LookupError(f"{ref.name} is not downloaded; run: free-jev-server pull {ref.name}")
+            raise LookupError(f"{ref.name} is not downloaded; run: olla-jev pull {ref.name}")
         sha, created, files = _remote_files(ref.repo_id, revision)
         if revision is None:
             revision = sha

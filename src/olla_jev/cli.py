@@ -30,10 +30,10 @@ DEFAULT_LOG = "server.log"
 
 
 def server_url() -> str:
-    """FREEJEV_HOST when set, else the address the last `serve` bound, else the default."""
+    """OLLAJEV_HOST when set, else the address the last `serve` bound, else the default."""
     import os
 
-    if os.environ.get("FREEJEV_HOST"):
+    if os.environ.get("OLLAJEV_HOST"):
         host, port = config.host()
         return f"http://{url_host(host)}:{port}"
     return config.load().get("server_url") or f"http://127.0.0.1:{config.DEFAULT_PORT}"
@@ -60,7 +60,7 @@ def server_running() -> bool:
 
 def need_server() -> None:
     if not server_running():
-        raise SystemExit(f"could not connect to free-jev-server at {server_url()}; start it with: free-jev-server serve")
+        raise SystemExit(f"could not connect to olla-jev at {server_url()}; start it with: olla-jev serve")
 
 
 # ---- model management -----------------------------------------------------------------------------
@@ -107,7 +107,7 @@ def cmd_list(args: argparse.Namespace) -> None:
 
     rows = tags()
     if not rows:
-        print("no models downloaded; try: free-jev-server pull " + config.DEFAULT_MODEL)
+        print("no models downloaded; try: olla-jev pull " + config.DEFAULT_MODEL)
         return
     default = canonical_or(default_model())
     width = max(len(m["name"]) for m in rows)
@@ -236,8 +236,8 @@ def cmd_serve(args: argparse.Namespace) -> None:
     data = config.load()
     env_host, env_port = config.host()
     host = args.host or data.get("host") or env_host
-    explicit = args.port is not None or bool(os.environ.get("FREEJEV_HOST"))
-    port = args.port or (env_port if os.environ.get("FREEJEV_HOST") else data.get("port") or env_port)
+    explicit = args.port is not None or bool(os.environ.get("OLLAJEV_HOST"))
+    port = args.port or (env_port if os.environ.get("OLLAJEV_HOST") else data.get("port") or env_port)
     model = args.model or default_model()
 
     configure_logging(args.log_file)
@@ -250,9 +250,9 @@ def cmd_serve(args: argparse.Namespace) -> None:
         if store.is_trusted(r):
             api.preload = canonical(r)
         else:
-            print(f"==> {canonical(r)} runs repo code and is not trusted yet; run: free-jev-server pull {canonical(r)}")
+            print(f"==> {canonical(r)} runs repo code and is not trusted yet; run: olla-jev pull {canonical(r)}")
     except LookupError:
-        print(f"==> {model} is not downloaded; serving without a model. Pull one with: free-jev-server pull {model}")
+        print(f"==> {model} is not downloaded; serving without a model. Pull one with: olla-jev pull {model}")
     if api.preload:
         print(f"==> Loading {api.preload}", flush=True)
         api.pin_preload = True
@@ -313,12 +313,12 @@ def cmd_run(args: argparse.Namespace) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="free-jev-server", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--version", action="version", version=version("free-jev-server"))
+    parser = argparse.ArgumentParser(prog="olla-jev", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--version", action="version", version=version("olla-jev"))
     parser.set_defaults(func=cmd_serve, model=None)
 
     def serve_options(p: argparse.ArgumentParser) -> None:
-        p.add_argument("--host", help="bind address (default: 127.0.0.1, or FREEJEV_HOST)")
+        p.add_argument("--host", help="bind address (default: 127.0.0.1, or OLLAJEV_HOST)")
         p.add_argument("--port", type=int, help="port (default: the first free one from 8000)")
         p.add_argument("--no-browser", action="store_true", help="do not open the demo page")
         p.add_argument("--log-file", default=DEFAULT_LOG, help=f"request and error log (default: {DEFAULT_LOG})")

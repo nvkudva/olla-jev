@@ -20,7 +20,7 @@ def _downloaded() -> set[str]:
 
 
 class Setup(App[dict[str, Any] | None]):
-    TITLE = "free-jev-server setup"
+    TITLE = "olla-jev setup"
     SUB_TITLE = "System One decision models from Hugging Face"
     BINDINGS = [("escape", "quit_setup", "Quit")]
     CSS = """
@@ -117,5 +117,5 @@ def setup() -> bool:
         print(f"error: {exc}")
         return False
     config.update(**choice)
-    print(f"==> Saved. Default model: {choice['default_model']}. Change it any time with: free-jev-server setup")
+    print(f"==> Saved. Default model: {choice['default_model']}. Change it any time with: olla-jev setup")
     return True

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Thin wrapper: make sure uv is available, then hand off to the CLI.
-# Everything else lives in freejev/cli.py so macOS, Linux and Windows share one code path.
+# Everything else lives in src/olla_jev/cli.py so macOS, Linux and Windows share one code path.
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -19,13 +19,13 @@ uv sync --quiet
 # Offer the global install, but only on a bare interactive run: with arguments this script is doing
 # a specific job (often backgrounded, or in CI), and a prompt there would hang waiting for a key.
 # --editable keeps the installed command following this checkout instead of freezing a copy of it.
-if [ $# -eq 0 ] && [ -t 0 ] && ! uv tool list 2>/dev/null | grep -q '^free-jev-server'; then
-  printf '\nInstall free-jev-server globally, so you can run it from anywhere? [y/N] '
+if [ $# -eq 0 ] && [ -t 0 ] && ! uv tool list 2>/dev/null | grep -q '^olla-jev'; then
+  printf '\nInstall olla-jev globally, so you can run it from anywhere? [y/N] '
   read -r reply || reply=""
   case "$reply" in
     [yY]*)
       if uv tool install --editable . --quiet; then
-        echo "==> Installed. From now on just run:  free-jev-server"
+        echo "==> Installed. From now on just run:  olla-jev"
       else
         echo "==> Install failed; carrying on with this checkout."
       fi
@@ -34,4 +34,4 @@ if [ $# -eq 0 ] && [ -t 0 ] && ! uv tool list 2>/dev/null | grep -q '^free-jev-s
   echo
 fi
 
-exec uv run free-jev-server "$@"
+exec uv run olla-jev "$@"

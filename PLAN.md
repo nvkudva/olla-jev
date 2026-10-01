@@ -193,3 +193,10 @@ Phase 1 names: `Mapika/decider-4b-GGUF:Q4_K_M` (default), `Mapika/decider-2b-GGU
 - The model `serve` preloads stays loaded (pinned); others follow keep_alive. Max loaded models defaults to 1.
 - `cp` creates a name alias in config; it copies no files.
 - `serve` scans for a free port from 8000 unless a port is given, and records the bound URL so other commands find it.
+
+### 2026-10-01 — Renamed to olla-jev, src layout
+
+- Project, command and distribution renamed from `free-jev-server` to `olla-jev`; import package `olla_jev` under `src/` (PyPA src layout).
+- Environment variables renamed from `FREEJEV_*` to `OLLAJEV_*`.
+- Rejected `ollama-jev`: "Ollama" is another company's product name, and Ollama now ships its own `/v1/systemone` (PR #18606, 2026-09-28), so the name would read as official. README states no affiliation.
+- Earlier sections of this file use the old names.

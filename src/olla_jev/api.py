@@ -72,7 +72,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 preload: str | None = None  # set by `serve` before startup
 pin_preload = False
 
-app = FastAPI(title="free-jev-server", version=version("free-jev-server"), lifespan=lifespan)
+app = FastAPI(title="olla-jev", version=version("olla-jev"), lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 

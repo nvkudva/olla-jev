@@ -1,5 +1,5 @@
 [project]
-name = "free-jev-server"
+name = "olla-jev"
 version = "0.1.0"
 description = "Run System One decision models from Hugging Face locally behind the Jev / System One API"
 readme = "README.md"
@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.scripts]
-free-jev-server = "freejev.cli:main"
+olla-jev = "olla_jev.cli:main"
 
 [project.optional-dependencies]
 dev = [
@@ -49,4 +49,4 @@ torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 
 [tool.hatch.build.targets.wheel]
-packages = ["freejev"]
+packages = ["src/olla_jev"]

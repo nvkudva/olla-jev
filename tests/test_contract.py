@@ -11,9 +11,9 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from freejev import api, normalize
-from freejev.manager import NotDownloaded, NotTrusted, check_limits
-from freejev.names import parse, pick_gguf
+from olla_jev import api, normalize
+from olla_jev.manager import NotDownloaded, NotTrusted, check_limits
+from olla_jev.names import parse, pick_gguf
 
 NOUL = {"type": "noul", "noul": 0.9, "x_extra": 1}
 
@@ -54,7 +54,7 @@ def stub(monkeypatch):
 
 @pytest.fixture
 def client(stub, tmp_path, monkeypatch):
-    monkeypatch.setenv("FREEJEV_HOME", str(tmp_path))
+    monkeypatch.setenv("OLLAJEV_HOME", str(tmp_path))
     with TestClient(api.app, raise_server_exceptions=False) as c:
         yield c
 

@@ -1,4 +1,4 @@
-# free-jev-server
+# olla-jev
 
 A local server that runs **System One decision models** from Hugging Face behind TypeSafe's
 **Jev / System One** wire API — the way Ollama runs LLMs.
@@ -16,17 +16,17 @@ A local server that runs **System One decision models** from Hugging Face behind
 ## Quick start
 
 ```sh
-git clone https://github.com/nvkudva/free-jev-server.git
-cd free-jev-server
+git clone https://github.com/nvkudva/olla-jev.git
+cd olla-jev
 ./start.sh          # macOS, Linux
 .\start.ps1         # Windows
 ```
 
 - The wrappers install [uv](https://docs.astral.sh/uv/) if it is missing, run `uv sync`, then hand
-  off to the `free-jev-server` CLI.
+  off to the `olla-jev` CLI.
 - The first run opens a setup screen: pick a model, the device and the address. It downloads the
-  model, saves your choices and starts the server. Run `free-jev-server setup` to change them later.
-- On a bare interactive run the wrapper offers once to install `free-jev-server` on your PATH.
+  model, saves your choices and starts the server. Run `olla-jev setup` to change them later.
+- On a bare interactive run the wrapper offers once to install `olla-jev` on your PATH.
 
 ## Example
 
@@ -85,7 +85,7 @@ The setup screen offers these, all under 4 GB:
 
 Any other repo works when it belongs to one of these families (decider, laya, julia, open-jev, kev,
 intern-decision, decision1), for example a fine-tune or a bigger size. Requests over a model's
-limits get a 422 before the model runs. `free-jev-server show <model>` prints them.
+limits get a 422 before the model runs. `olla-jev show <model>` prints them.
 
 ### Repo code and trust
 
@@ -94,14 +94,14 @@ your user's privileges. The first `pull` of such a repo shows the commit and its
 asks you to trust that exact commit (`--trust` skips the question). Every repo is pinned to the
 commit of its first download and never updates by itself.
 
-kev's loader is vendored from GitHub at a pinned commit (`freejev/_vendor/kev`), and its `head.pt`
+kev's loader is vendored from GitHub at a pinned commit (`olla_jev/_vendor/kev`), and its `head.pt`
 is loaded with `torch.load(weights_only=True)`, so the file cannot run code.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `free-jev-server` / `serve [model]` | start the server; the first run opens setup |
+| `olla-jev` / `serve [model]` | start the server; the first run opens setup |
 | `setup` | pick the default model, device and address, then serve |
 | `run [model]` | ask questions from the terminal |
 | `pull <model>… [--trust]` | download models |
@@ -144,12 +144,12 @@ most likely level, noul the same as a two-option choice.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `FREEJEV_HOST` | `127.0.0.1:8000` | bind address for `serve`, and where the other commands look for it |
-| `FREEJEV_KEEP_ALIVE` | `5m` | how long an idle model stays loaded (`300`, `5m`, `1h`, `-1` = forever) |
-| `FREEJEV_MAX_LOADED_MODELS` | `1` | models in memory at once; the least recently used one unloads |
-| `FREEJEV_MODELS` | Hugging Face cache | where weights are stored |
-| `FREEJEV_DEVICE` | best available | force `cpu`, `mps` or `cuda` |
-| `FREEJEV_HOME` | `~/.config/free-jev-server` | config: default model, pins, trusted commits, aliases |
+| `OLLAJEV_HOST` | `127.0.0.1:8000` | bind address for `serve`, and where the other commands look for it |
+| `OLLAJEV_KEEP_ALIVE` | `5m` | how long an idle model stays loaded (`300`, `5m`, `1h`, `-1` = forever) |
+| `OLLAJEV_MAX_LOADED_MODELS` | `1` | models in memory at once; the least recently used one unloads |
+| `OLLAJEV_MODELS` | Hugging Face cache | where weights are stored |
+| `OLLAJEV_DEVICE` | best available | force `cpu`, `mps` or `cuda` |
+| `OLLAJEV_HOME` | `~/.config/olla-jev` | config: default model, pins, trusted commits, aliases |
 
 The model `serve` preloads stays loaded until the server stops.
 

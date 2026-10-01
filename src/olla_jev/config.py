@@ -1,4 +1,4 @@
-"""Settings from FREEJEV_* environment variables, plus the saved config file."""
+"""Settings from OLLAJEV_* environment variables, plus the saved config file."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ DEFAULT_PORT = 8000
 
 
 def config_dir() -> Path:
-    return Path(os.environ.get("FREEJEV_HOME", Path.home() / ".config" / "free-jev-server"))
+    return Path(os.environ.get("OLLAJEV_HOME", Path.home() / ".config" / "olla-jev"))
 
 
 def config_path() -> Path:
@@ -20,8 +20,8 @@ def config_path() -> Path:
 
 
 def host() -> tuple[str, int]:
-    """FREEJEV_HOST as host or host:port, like OLLAMA_HOST. Default 127.0.0.1:8000."""
-    value = os.environ.get("FREEJEV_HOST", "")
+    """OLLAJEV_HOST as host or host:port, like OLLAMA_HOST. Default 127.0.0.1:8000."""
+    value = os.environ.get("OLLAJEV_HOST", "")
     value = value.removeprefix("http://").removeprefix("https://").rstrip("/")
     if not value:
         return "127.0.0.1", DEFAULT_PORT
@@ -35,22 +35,22 @@ def host() -> tuple[str, int]:
 
 
 def models_dir() -> str | None:
-    """FREEJEV_MODELS overrides where weights are stored; None means the shared Hugging Face cache."""
-    return os.environ.get("FREEJEV_MODELS") or None
+    """OLLAJEV_MODELS overrides where weights are stored; None means the shared Hugging Face cache."""
+    return os.environ.get("OLLAJEV_MODELS") or None
 
 
 def keep_alive() -> float:
-    """Seconds an idle model stays loaded. FREEJEV_KEEP_ALIVE accepts 300, 5m, 1h, or -1 for forever."""
-    return parse_duration(os.environ.get("FREEJEV_KEEP_ALIVE", "5m"))
+    """Seconds an idle model stays loaded. OLLAJEV_KEEP_ALIVE accepts 300, 5m, 1h, or -1 for forever."""
+    return parse_duration(os.environ.get("OLLAJEV_KEEP_ALIVE", "5m"))
 
 
 def max_loaded_models() -> int:
-    return int(os.environ.get("FREEJEV_MAX_LOADED_MODELS", "1"))
+    return int(os.environ.get("OLLAJEV_MAX_LOADED_MODELS", "1"))
 
 
 def device() -> str | None:
-    """FREEJEV_DEVICE, else the device saved by setup, forces cpu, mps or cuda; None picks the best one."""
-    value = os.environ.get("FREEJEV_DEVICE") or load().get("device")
+    """OLLAJEV_DEVICE, else the device saved by setup, forces cpu, mps or cuda; None picks the best one."""
+    value = os.environ.get("OLLAJEV_DEVICE") or load().get("device")
     return None if value in (None, "", "auto") else value
 
 

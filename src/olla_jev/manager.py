@@ -64,7 +64,7 @@ class Manager:
         self._slots: dict[str, Slot] = {}
         self._guard = threading.RLock()
         self._load_lock = threading.Lock()  # one load at a time: loads are memory spikes
-        self._reaper = threading.Thread(target=self._reap, name="freejev-reaper", daemon=True)
+        self._reaper = threading.Thread(target=self._reap, name="olla-jev-reaper", daemon=True)
         self._reaper.start()
 
     def resolve(self, name: str | None) -> store.Resolved:
@@ -91,11 +91,11 @@ class Manager:
         if not store.is_trusted(r):
             raise NotTrusted(
                 f"{key} runs Python code from its repo at {r.revision[:12]}; review it, then run: "
-                f"free-jev-server pull {key} --trust"
+                f"olla-jev pull {key} --trust"
             )
         path = store.local_path(r)
         if path is None:
-            raise NotDownloaded(f"{key} is not downloaded; run: free-jev-server pull {key}")
+            raise NotDownloaded(f"{key} is not downloaded; run: olla-jev pull {key}")
         while len(self._slots) >= max(1, config.max_loaded_models()):
             self.unload(min(self._slots.values(), key=lambda s: s.expires).name)
         device = pick_device(config.device())
