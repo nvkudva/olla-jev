@@ -1,17 +1,7 @@
 # olla-jev
 
-> **Ollama, but for Jev-style decision models.** Pull a System One model from Hugging Face, run it
-> on your machine, and call it through the same `/v1/systemone` API as TypeSafe's hosted Jev.
-
-| | Ollama | olla-jev |
-|---|---|---|
-| Runs | chat and text-generation LLMs | System One decision models (Jev-style) |
-| Answers with | generated text | probabilities for typed questions, one forward pass |
-| Models from | ollama.com library, Hugging Face GGUF | Hugging Face (decider, laya, Julia, kev, …) |
-| Model names | `hf.co/user/repo:Q4_K_M` | `user/repo:Q4_K_M`, same tag rules |
-| Commands | `serve`, `run`, `pull`, `list`, `ps`, `show`, `rm`, `stop`, `cp` | the same |
-| API | OpenAI-compatible `/v1/chat/completions` | Jev-compatible `/v1/systemone` |
-| Background | menu-bar app / systemd service | `olla-jev service install` (launchd / systemd) |
+> **Run Jev-style decision models on your machine.** Pull a System One model from Hugging Face and
+> call it through the same `/v1/systemone` API as TypeSafe's hosted Jev.
 
 A local server that runs **System One decision models** from Hugging Face behind TypeSafe's
 **Jev / System One** wire API.
@@ -24,7 +14,7 @@ A local server that runs **System One decision models** from Hugging Face behind
 - You get back a probability for each question: `noul` (yes/no), `choice` (pick one option) or
   `score` (expected level on an ordered rubric).
 - Pick a model with the request's `model` field. Models load on first use and unload when idle.
-- Commands mirror Ollama's: `serve`, `run`, `pull`, `list`, `ps`, `show`, `rm`, `stop`, `cp`.
+- One command line to manage models: `serve`, `setup`, `run`, `pull`, `list`, `ps`, `show`, `rm`, `stop`, `cp`, `service` (see [Commands](#commands)).
 
 olla-jev is an independent project. It is not affiliated with or endorsed by Ollama or TypeSafe.
 
@@ -121,9 +111,9 @@ Leave `model` out, or send `jev-latest` (typesafe-sdk's default), to use the def
 
 ## Models
 
-A model name is its Hugging Face repo id. Repos with several quantized files take Ollama's tag
-syntax: `<repo>:<quant>` (case-insensitive) or `<repo>:<file.gguf>`. Without a tag, Q4_K_M is used.
-An `hf.co/` prefix is accepted, so names copied from an Ollama command work.
+A model name is its Hugging Face repo id: `<user>/<repo>`. Repos with several quantized files take a
+tag: `<user>/<repo>:<quant>` (case-insensitive) or `<user>/<repo>:<file.gguf>`. Without a tag,
+Q4_K_M is used. An `hf.co/` or `huggingface.co/` prefix is accepted and ignored.
 
 The setup screen offers these, all under 4 GB:
 
@@ -146,6 +136,30 @@ The setup screen offers these, all under 4 GB:
 Any other repo works when it belongs to one of these families (decider, laya, julia, open-jev, kev,
 intern-decision, decision1), for example a fine-tune or a bigger size. Requests over a model's
 limits get a 422 before the model runs. `olla-jev show <model>` prints them.
+
+### Download, switch and remove models
+
+```sh
+olla-jev list                                  # what is downloaded; * marks the default
+olla-jev pull SupersonicLabs/Julia-1           # download a model (any name from the table)
+olla-jev pull Mapika/decider-2b-GGUF:Q8_0      # download one quantized file
+```
+
+To use a different model:
+
+| You want | Do this |
+|---|---|
+| Another model for one request | send `"model": "<name>"` in the `/v1/systemone` body; it loads on first use |
+| Another default model | `olla-jev setup`, pick a model; it saves the choice and starts the server (stop any running server first). A server already running picks up the saved default for requests that omit `model` |
+| Serve a model once, without changing the default | `olla-jev serve <name>` |
+| Ask a model from the terminal | `olla-jev run <name>` |
+| A short name for a long one | `olla-jev cp <name> julia`, then send `"model": "julia"` |
+| Free memory now | `olla-jev stop <name>` (idle models also unload after `OLLAJEV_KEEP_ALIVE`) |
+| Free disk space | `olla-jev rm <name>` |
+
+A model must be downloaded before a request can use it; requests never download. Only
+`OLLAJEV_MAX_LOADED_MODELS` models (default 1) stay in memory, so asking for a second model unloads the
+first.
 
 ### Repo code and trust
 
@@ -176,21 +190,29 @@ send one, so use it without a key. Put TLS in front (a reverse proxy) before exp
 
 ## Commands
 
+Run `olla-jev <command> --help` for options and an example.
+
 | Command | What it does |
 |---|---|
-| `olla-jev` / `serve [model]` | start the server; the first run opens setup |
-| `setup` | pick the default model, device and address, then serve |
-| `run [model]` | ask questions from the terminal |
-| `pull <model>… [--trust]` | download models |
-| `list` | downloaded models (`*` marks the default) |
-| `ps` | loaded models, device and unload time |
-| `show <model>` | family, pinned commit, limits, path |
-| `rm <model>…` | delete a download (one quant of a GGUF repo, or the whole repo) |
-| `stop <model>` | unload a model now |
-| `cp <source> <name>` | give a model a short name |
-| `service install\|uninstall\|status\|logs` | run the server in the background at login |
+| `olla-jev` | start the server; the first run opens setup |
+| `olla-jev serve [model]` | start the server. Options: `--host`, `--port`, `--no-browser`, `--log-file` |
+| `olla-jev setup` | pick the default model, device and address, then serve |
+| `olla-jev run [model]` | ask questions from the terminal |
+| `olla-jev pull <model>… [--trust]` | download models; `--trust` skips the repo-code question |
+| `olla-jev list` (`ls`) | downloaded models, family, size and date; `*` marks the default |
+| `olla-jev ps` | models loaded in memory, device and unload time |
+| `olla-jev show <model>` | family, pinned commit, file, limits and local path |
+| `olla-jev rm <model>…` | delete a download (one quant of a GGUF repo, or the whole repo) or an alias |
+| `olla-jev stop <model>` | unload a model from memory now |
+| `olla-jev cp <source> <name>` | give a model a short name |
+| `olla-jev service install` | run the server in the background at login (macOS launchd, Linux systemd) |
+| `olla-jev service uninstall` | stop and remove that service |
+| `olla-jev service status` | show whether the service is running |
+| `olla-jev service logs` | follow the server log |
+| `olla-jev --version` | print the version |
 
-Every command has `--help` with an example.
+`ps`, `stop` and `rm` talk to the running server when there is one. `list`, `show`, `pull` and `cp`
+work with no server running. Environment variables are listed under [Configuration](#configuration).
 
 `run` uses the running server, or loads the model in its own process when none is running:
 
@@ -207,7 +229,7 @@ q3>
 
 - **Jev / System One:** `GET /v1/models`, `POST /v1/systemone`. Bearer headers are ignored
   unless `OLLAJEV_API_KEY` is set.
-- **Model management, Ollama style:** `GET /api/tags`, `GET /api/ps`, `POST /api/pull`
+- **Model management:** `GET /api/tags`, `GET /api/ps`, `POST /api/pull`
   (`{"model", "stream"}`, NDJSON progress), `POST /api/show`, `DELETE /api/delete`,
   `POST /api/copy`, `POST /api/stop`.
 - **Demo page:** `/demo` — a request editor with a model picker, five ready-made examples and a log
@@ -257,6 +279,20 @@ uv sync
 uv run olla-jev --help
 uv run pytest
 ```
+
+## How it compares to Ollama
+
+olla-jev follows Ollama's workflow (pull, list, run, serve) for a different kind of model.
+
+| | Ollama | olla-jev |
+|---|---|---|
+| Runs | chat and text-generation LLMs | System One decision models (Jev-style) |
+| Answers with | generated text | probabilities for typed questions, one forward pass |
+| Models from | ollama.com library, Hugging Face GGUF | Hugging Face (decider, laya, Julia, kev, …) |
+| Model names | `hf.co/user/repo:Q4_K_M` | `user/repo:Q4_K_M`, same tag rules |
+| Commands | `serve`, `run`, `pull`, `list`, `ps`, `show`, `rm`, `stop`, `cp` | the same |
+| API | OpenAI-compatible `/v1/chat/completions` | Jev-compatible `/v1/systemone` |
+| Background | menu-bar app / systemd service | `olla-jev service install` (launchd / systemd) |
 
 ## License
 
