@@ -17,7 +17,6 @@ class _Decider:
     name = "decider"
     runs_repo_code = False
 
-
     def limits(self, r) -> dict:
         return LIMITS
 
@@ -41,7 +40,14 @@ class _Decider:
         def predict(state: Any, questions: dict[str, dict[str, Any]]) -> dict[str, Any]:
             return d.system_one(state, questions)
 
-        return Loaded(r.name, f"decider typed-decision model ({backend})", None, self.limits(r), predict, device="llama.cpp" if r.gguf else device)
+        return Loaded(
+            r.name,
+            f"decider typed-decision model ({backend})",
+            None,
+            self.limits(r),
+            predict,
+            device="llama.cpp" if r.gguf else device,
+        )
 
 
 FAMILY = _Decider()

@@ -20,7 +20,6 @@ from .manager import Manager, NotDownloaded, NotTrusted, default_model
 JSONContent = str | dict[str, Any] | list[Any]
 
 
-
 class NoulCriteria(BaseModel):
     true: JSONContent | None = None
     false: JSONContent | None = None
@@ -69,6 +68,12 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     manager.unload_all()
 
 
+def current_manager() -> Manager:
+    if manager is None:
+        raise RuntimeError("the server has not started")
+    return manager
+
+
 preload: str | None = None  # set by `serve` before startup
 pin_preload = False
 
@@ -97,7 +102,12 @@ def _model_error(exc: Exception) -> JSONResponse:
 
 @app.get("/")
 async def health() -> dict[str, Any]:
-    return {"status": "ok", "default_model": default_model(), "loaded": [s.name for s in manager.loaded()], "ui": "/demo"}
+    return {
+        "status": "ok",
+        "default_model": default_model(),
+        "loaded": [s.name for s in current_manager().loaded()],
+        "ui": "/demo",
+    }
 
 
 @app.get("/demo")
@@ -116,8 +126,15 @@ def list_models() -> dict[str, Any]:
     default = default_model()
     out = []
     for m in admin.tags():
-        out.append({"name": m["name"], "description": m["description"], "release_date": m["release_date"],
-                    "default": m["name"] == default, "limits": m["limits"]})
+        out.append(
+            {
+                "name": m["name"],
+                "description": m["description"],
+                "release_date": m["release_date"],
+                "default": m["name"] == default,
+                "limits": m["limits"],
+            }
+        )
     out.sort(key=lambda m: not m["default"])
     return {"models": out}
 
@@ -126,7 +143,7 @@ def list_models() -> dict[str, Any]:
 def system_one(req: Annotated[SystemOneRequest, Body()]) -> Any:
     questions = {name: _wire(q) for name, q in req.questions.items()}
     try:
-        slot, result = manager.run(req.model, req.state, questions)
+        slot, result = current_manager().run(req.model, req.state, questions)
         answers = normalize.answers(questions, result["answers"])
     except (NotDownloaded, NotTrusted) as exc:
         return _model_error(exc)
@@ -136,7 +153,10 @@ def system_one(req: Annotated[SystemOneRequest, Body()]) -> Any:
     return {
         "model": slot.name,
         "answers": answers,
-        "usage": {"input_tokens": int(usage.get("input_tokens", 0)), "output_tokens": int(usage.get("output_tokens", 0))},
+        "usage": {
+            "input_tokens": int(usage.get("input_tokens", 0)),
+            "output_tokens": int(usage.get("output_tokens", 0)),
+        },
     }
 
 

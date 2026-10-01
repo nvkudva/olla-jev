@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from . import import_from, instructions_or_name, text_state
 from .base import Loaded
@@ -17,7 +17,6 @@ def _option(name: str, description: Any) -> str:
 class _OpenJev:
     name = "open-jev"
     runs_repo_code = True
-
 
     def limits(self, r) -> dict:
         return LIMITS
@@ -35,25 +34,35 @@ class _OpenJev:
         def predict(state: Any, questions: dict[str, dict[str, Any]]) -> dict[str, Any]:
             ids, batch, keys = [], [], []
             for qid, q in questions.items():
-                kind, crit = q["type"], q.get("criteria")
+                kind, crit = q["type"], cast(Any, q.get("criteria"))
                 if kind == "noul":
                     text = q.get("instructions") or (crit or {}).get("true") or qid.replace("_", " ")
                     batch.append({"type": "noul", "instructions": text_state(text)})
                     keys.append(None)
                 elif kind == "choice":
-                    batch.append({"type": "choice", "instructions": text_state(instructions_or_name(qid, q)),
-                                  "options": [_option(n, d) for n, d in crit.items()]})
+                    batch.append(
+                        {
+                            "type": "choice",
+                            "instructions": text_state(instructions_or_name(qid, q)),
+                            "options": [_option(n, d) for n, d in crit.items()],
+                        }
+                    )
                     keys.append(list(crit))
                 else:
-                    batch.append({"type": "score", "instructions": text_state(instructions_or_name(qid, q)),
-                                  "options": [text_state(level) for level in crit]})
+                    batch.append(
+                        {
+                            "type": "score",
+                            "instructions": text_state(instructions_or_name(qid, q)),
+                            "options": [text_state(level) for level in crit],
+                        }
+                    )
                     keys.append([str(i) for i in range(len(crit))])
                 ids.append(qid)
             out = model.decide(text_state(state), batch)
             answers = {}
-            for qid, k, a in zip(ids, keys, out):
+            for qid, k, a in zip(ids, keys, out, strict=False):
                 if k is not None:
-                    a = {**a, "probabilities": dict(zip(k, a["probabilities"].values()))}
+                    a = {**a, "probabilities": dict(zip(k, a["probabilities"].values(), strict=False))}
                     if "choice" in a:
                         a["choice"] = k[max(range(len(k)), key=lambda i: list(a["probabilities"].values())[i])]
                 answers[qid] = a

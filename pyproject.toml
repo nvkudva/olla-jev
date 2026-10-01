@@ -6,6 +6,22 @@ readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.12,<3.13"
+authors = [{ name = "Vijay Krishna Kudva" }]
+keywords = ["jev", "system-one", "typesafe", "decision-model", "huggingface", "ollama", "llama.cpp", "classification"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
 dependencies = [
     "torch==2.14.0",
     "transformers==5.17.0",
@@ -19,15 +35,24 @@ dependencies = [
     "peft==0.21.1",
     "torchvision==0.29.1",
     "pillow==12.3.0",
+    "platformdirs==4.5.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/nvkudva/olla-jev"
+Source = "https://github.com/nvkudva/olla-jev"
+Issues = "https://github.com/nvkudva/olla-jev/issues"
+Changelog = "https://github.com/nvkudva/olla-jev/blob/main/CHANGELOG.md"
 
 [project.scripts]
 olla-jev = "olla_jev.cli:main"
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
-    "pytest>=9.1.1",
+    "pytest==9.1.1",
     "typesafe-sdk==0.7.0",
+    "ruff==0.16.9",
+    "pyright==1.1.414",
 ]
 
 [build-system]
@@ -50,3 +75,21 @@ torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/olla_jev"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["src/olla_jev/_vendor"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]  # the formatter owns line length; long strings stay readable
+
+[tool.pyright]
+include = ["src"]
+exclude = ["src/olla_jev/_vendor"]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

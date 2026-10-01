@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import queue
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -51,13 +51,16 @@ def _describe(name: str, r: store.Resolved, size: int, modified: float) -> dict[
         "name": name,
         "model": name,
         "size": size,
-        "modified_at": datetime.fromtimestamp(modified, timezone.utc).isoformat(),
+        "modified_at": datetime.fromtimestamp(modified, UTC).isoformat(),
         "digest": r.revision,
         "description": DESCRIPTIONS.get(name, f"{r.family.name} typed-decision model"),
         # TypeSafe clients require a string; fall back to the download date for repos pinned offline.
-        "release_date": store.released(r.repo_id) or datetime.fromtimestamp(modified, timezone.utc).date().isoformat(),
-        "details": {"family": r.family.name, "format": "gguf" if r.gguf else "safetensors",
-                    "quantization_level": quant_of(r.gguf) if r.gguf else None},
+        "release_date": store.released(r.repo_id) or datetime.fromtimestamp(modified, UTC).date().isoformat(),
+        "details": {
+            "family": r.family.name,
+            "format": "gguf" if r.gguf else "safetensors",
+            "quantization_level": quant_of(r.gguf) if r.gguf else None,
+        },
         "limits": r.family.limits(r),
     }
 
@@ -93,11 +96,21 @@ def api_ps() -> dict[str, Any]:
 
     now = __import__("time").monotonic()
     models = []
-    for slot in api.manager.loaded():
-        expires = None if slot.expires == float("inf") else datetime.fromtimestamp(
-            datetime.now().timestamp() + (slot.expires - now), timezone.utc).isoformat()
-        models.append({"name": slot.name, "model": slot.name, "device": slot.device, "expires_at": expires,
-                       "details": {"family": slot.resolved.family.name}})
+    for slot in api.current_manager().loaded():
+        expires = (
+            None
+            if slot.expires == float("inf")
+            else datetime.fromtimestamp(datetime.now().timestamp() + (slot.expires - now), UTC).isoformat()
+        )
+        models.append(
+            {
+                "name": slot.name,
+                "model": slot.name,
+                "device": slot.device,
+                "expires_at": expires,
+                "details": {"family": slot.resolved.family.name},
+            }
+        )
     return {"models": models}
 
 
@@ -132,8 +145,12 @@ def api_pull(req: PullRequest) -> Any:
             r = store.resolve(lookup(req.model))
             if r.family.runs_repo_code and not store.is_trusted(r):
                 if not req.trust:
-                    events.put({"error": f"{canonical(r)} runs Python code from its repo; pull again with trust=true "
-                                         f"after reviewing https://huggingface.co/{r.repo_id}/tree/{r.revision}"})
+                    events.put(
+                        {
+                            "error": f"{canonical(r)} runs Python code from its repo; pull again with trust=true "
+                            f"after reviewing https://huggingface.co/{r.repo_id}/tree/{r.revision}"
+                        }
+                    )
                     return
                 store.trust(r)
             events.put({"status": f"downloading {r.repo_id}@{r.revision[:12]}", "digest": r.revision})
@@ -173,11 +190,11 @@ def api_delete(req: ModelRef) -> Any:
         r = store.resolve(lookup(req.model), online=False)
     except LookupError as exc:
         return JSONResponse(status_code=404, content={"error": str(exc)})
-    api.manager.unload(canonical(r))
-    path = store.local_path(r)
-    others = [p for p in Path(path).glob("**/*.gguf") if p.name != Path(r.gguf).name] if r.gguf and path else []
-    if others:  # other quants of this repo stay; remove only this file and its blob
-        link = Path(path) / r.gguf
+    api.current_manager().unload(canonical(r))
+    path, gguf = store.local_path(r), r.gguf
+    others = [p for p in Path(path).glob("**/*.gguf") if p.name != Path(gguf).name] if gguf and path else []
+    if gguf and path and others:  # other quants of this repo stay; remove only this file and its blob
+        link = Path(path) / gguf
         blob = link.resolve()
         freed = blob.stat().st_size
         link.unlink()
@@ -202,4 +219,4 @@ def api_stop(req: ModelRef) -> Any:
         r = store.resolve(lookup(req.model), online=False)
     except LookupError as exc:
         return JSONResponse(status_code=404, content={"error": str(exc)})
-    return {"status": "success" if api.manager.unload(canonical(r)) else "not loaded"}
+    return {"status": "success" if api.current_manager().unload(canonical(r)) else "not loaded"}

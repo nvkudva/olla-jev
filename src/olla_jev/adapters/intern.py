@@ -18,7 +18,6 @@ class _Intern:
     name = "intern-decision"
     runs_repo_code = True
 
-
     def limits(self, r) -> dict:
         return LIMITS
 
@@ -37,9 +36,11 @@ class _Intern:
             qs = {}
             for qid, q in questions.items():
                 out = {"type": q["type"], "instructions": instructions_or_name(qid, q)}
-                crit = q.get("criteria")
+                crit: Any = q.get("criteria")
                 if q["type"] == "choice":
-                    crit = {n: "" if d is None else d for n, d in crit.items()}  # None would be rendered as the text "None"
+                    crit = {
+                        n: "" if d is None else d for n, d in crit.items()
+                    }  # None would be rendered as the text "None"
                 if crit is not None:
                     out["criteria"] = crit
                 qs[qid] = out

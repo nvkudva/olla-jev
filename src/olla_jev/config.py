@@ -7,12 +7,27 @@ import os
 from pathlib import Path
 from typing import Any
 
+import platformdirs
+
 DEFAULT_MODEL = "Mapika/decider-4b-GGUF:Q4_K_M"
 DEFAULT_PORT = 8000
 
 
+APP = "olla-jev"
+
+
 def config_dir() -> Path:
-    return Path(os.environ.get("OLLAJEV_HOME", Path.home() / ".config" / "olla-jev"))
+    """OLLAJEV_HOME, else the OS config folder: ~/.config/olla-jev (Linux),
+    ~/Library/Application Support/olla-jev (macOS), %APPDATA%\\olla-jev (Windows)."""
+    home = os.environ.get("OLLAJEV_HOME")
+    return Path(home) if home else Path(platformdirs.user_config_dir(APP, appauthor=False))
+
+
+def log_dir() -> Path:
+    """OLLAJEV_HOME/logs, else the OS log folder: ~/.local/state/olla-jev/log (Linux),
+    ~/Library/Logs/olla-jev (macOS)."""
+    home = os.environ.get("OLLAJEV_HOME")
+    return Path(home) / "logs" if home else Path(platformdirs.user_log_dir(APP, appauthor=False))
 
 
 def config_path() -> Path:

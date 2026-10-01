@@ -149,7 +149,9 @@ class Manager:
                 if slot.expires <= now and not slot.lock.locked():
                     self.unload(slot.name)
 
-    def run(self, name: str | None, state: Any, questions: dict[str, dict[str, Any]], keep_alive: float | None = None) -> tuple[Slot, dict[str, Any]]:
+    def run(
+        self, name: str | None, state: Any, questions: dict[str, dict[str, Any]], keep_alive: float | None = None
+    ) -> tuple[Slot, dict[str, Any]]:
         slot = self.get(name, keep_alive)
         check_limits(slot.adapter.limits, questions)
         # One forward pass per model at a time: on MPS concurrent forwards abort the process with a

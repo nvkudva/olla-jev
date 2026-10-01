@@ -14,7 +14,6 @@ class _Decision1:
     name = "decision1"
     runs_repo_code = True
 
-
     def limits(self, r) -> dict:
         return LIMITS
 

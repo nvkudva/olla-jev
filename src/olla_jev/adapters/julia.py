@@ -18,7 +18,6 @@ class _Julia:
     name = "julia"
     runs_repo_code = True
 
-
     def limits(self, r) -> dict:
         return LIMITS
 
@@ -41,7 +40,7 @@ class _Julia:
         def predict(state: Any, questions: dict[str, dict[str, Any]]) -> dict[str, Any]:
             qs = {}
             for qid, q in questions.items():
-                crit = q.get("criteria")
+                crit: Any = q.get("criteria")
                 out = {"type": q["type"], "instructions": text_state(instructions_or_name(qid, q))}
                 if q["type"] == "choice":
                     out["criteria"] = {n: _label(n, d) for n, d in crit.items()}

@@ -49,11 +49,13 @@ def run(model: str | None) -> None:
     from . import cli, normalize
 
     if cli.server_running():
+
         def ask(state: str, questions: dict[str, Any]) -> dict[str, Any]:
             body = {"state": state, "questions": questions}
             if model:
                 body["model"] = model
             return cli.call("POST", "/v1/systemone", body)
+
         print(f"==> using the server at {cli.server_url()}")
     else:
         from .manager import Manager
@@ -88,7 +90,9 @@ def run(model: str | None) -> None:
                     break
                 parsed = parse_question(line)
                 if parsed is None:
-                    print("  not a question; " + HELP.splitlines()[1].strip() + " (choice/score need 2+ options after |)")
+                    print(
+                        "  not a question; " + HELP.splitlines()[1].strip() + " (choice/score need 2+ options after |)"
+                    )
                     continue
                 questions[f"q{len(questions) + 1}"] = parsed[1]
             if not questions:

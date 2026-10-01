@@ -17,7 +17,6 @@ class _Kev:
     name = "kev"
     runs_repo_code = False
 
-
     def limits(self, r) -> dict:
         return LIMITS
 
@@ -33,8 +32,11 @@ class _Kev:
         from huggingface_hub import snapshot_download
 
         meta = torch.load(f"{path}/head.pt", map_location="cpu", weights_only=True)
-        snapshot_download(meta["base"], revision=meta.get("base_revision"),
-                          allow_patterns=["*.json", "*.safetensors", "*.txt", "*.jinja", "tokenizer*", "merges.txt", "vocab.json"])
+        snapshot_download(
+            meta["base"],
+            revision=meta.get("base_revision"),
+            allow_patterns=["*.json", "*.safetensors", "*.txt", "*.jinja", "tokenizer*", "merges.txt", "vocab.json"],
+        )
 
     def load(self, path: str, r, device: str | None) -> Loaded:
         import torch
@@ -50,12 +52,14 @@ class _Kev:
         tok, model = ck.load(device, opts)
 
         def predict(state: Any, questions: dict[str, dict[str, Any]]) -> dict[str, Any]:
-            rec, meta = to_record(SystemOneRequest(state=state, questions=questions))
+            rec, meta = to_record(SystemOneRequest.model_validate({"state": state, "questions": questions}))
             enc = admit(model, tok, rec)
             with torch.inference_mode():
                 probs = model.probs(enc)
-            return {"answers": to_answers([p.tolist() for p in probs], meta),
-                    "usage": {"input_tokens": len(enc["ids"]), "output_tokens": 0}}
+            return {
+                "answers": to_answers([p.tolist() for p in probs], meta),
+                "usage": {"input_tokens": len(enc["ids"]), "output_tokens": 0},
+            }
 
         return Loaded(r.name, f"Kev pointer head on {ck.meta.base}", None, self.limits(r), predict)
 

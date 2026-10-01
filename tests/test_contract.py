@@ -32,7 +32,10 @@ class StubManager:
             if q["type"] == "noul":
                 answers[qid] = NOUL
             elif q["type"] == "choice":
-                answers[qid] = {"choice": list(q["criteria"])[0], "probabilities": {k: 1 / len(q["criteria"]) for k in q["criteria"]}}
+                answers[qid] = {
+                    "choice": list(q["criteria"])[0],
+                    "probabilities": {k: 1 / len(q["criteria"]) for k in q["criteria"]},
+                }
             else:
                 answers[qid] = {"probabilities": {str(i): 1 / len(q["criteria"]) for i in range(len(q["criteria"]))}}
         return SimpleNamespace(name="user/model"), {"answers": answers, "usage": {"input_tokens": 3}}
@@ -65,11 +68,14 @@ def ask(client, questions, **body):
 
 def test_response_matches_the_typesafe_schema(client):
     models = pytest.importorskip("typesafe_sdk._schemas.models")
-    r = ask(client, {
-        "n": {"type": "noul", "instructions": "y"},
-        "c": {"type": "choice", "criteria": {"a": None, "b": "B"}},
-        "s": {"type": "score", "criteria": ["low", "high"]},
-    })
+    r = ask(
+        client,
+        {
+            "n": {"type": "noul", "instructions": "y"},
+            "c": {"type": "choice", "criteria": {"a": None, "b": "B"}},
+            "s": {"type": "score", "criteria": ["low", "high"]},
+        },
+    )
     assert r.status_code == 200, r.text
     body = r.json()
     models.SystemOneResponse.model_validate(body)
@@ -85,11 +91,14 @@ def test_choice_options_without_description_reach_the_model(client, stub):
     assert stub.calls[-1][2]["c"]["criteria"] == {"a": None, "b": "B"}
 
 
-@pytest.mark.parametrize("error,status,kind", [
-    (NotDownloaded("x is not downloaded"), 404, "model_not_found"),
-    (NotTrusted("x is not trusted"), 403, "model_not_trusted"),
-    (ValueError("too many options"), 422, "value_error"),
-])
+@pytest.mark.parametrize(
+    "error,status,kind",
+    [
+        (NotDownloaded("x is not downloaded"), 404, "model_not_found"),
+        (NotTrusted("x is not trusted"), 403, "model_not_trusted"),
+        (ValueError("too many options"), 422, "value_error"),
+    ],
+)
 def test_model_errors_keep_the_error_shape(client, stub, error, status, kind):
     stub.error = error
     r = ask(client, {"n": {"type": "noul"}})
@@ -118,12 +127,15 @@ def test_every_preset_is_a_valid_request(client):
         assert ask(client, example["questions"]).status_code == 200, name
 
 
-@pytest.mark.parametrize("name,repo,tag", [
-    ("SupersonicLabs/Julia-1", "SupersonicLabs/Julia-1", None),
-    ("Mapika/decider-4b-GGUF:Q4_K_M", "Mapika/decider-4b-GGUF", "Q4_K_M"),
-    ("hf.co/Mapika/decider-4b-GGUF:q8_0", "Mapika/decider-4b-GGUF", "q8_0"),
-    ("https://huggingface.co/a/b:x.gguf", "a/b", "x.gguf"),
-])
+@pytest.mark.parametrize(
+    "name,repo,tag",
+    [
+        ("SupersonicLabs/Julia-1", "SupersonicLabs/Julia-1", None),
+        ("Mapika/decider-4b-GGUF:Q4_K_M", "Mapika/decider-4b-GGUF", "Q4_K_M"),
+        ("hf.co/Mapika/decider-4b-GGUF:q8_0", "Mapika/decider-4b-GGUF", "q8_0"),
+        ("https://huggingface.co/a/b:x.gguf", "a/b", "x.gguf"),
+    ],
+)
 def test_parse_names(name, repo, tag):
     ref = parse(name)
     assert (ref.repo_id, ref.tag) == (repo, tag)

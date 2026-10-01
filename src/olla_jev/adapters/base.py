@@ -25,8 +25,16 @@ class Adapter(Protocol):
 class Loaded:
     """An Adapter built from a family's predict function."""
 
-    def __init__(self, name: str, description: str, released: str | None, limits: dict[str, Any], predict, close=None,
-                 device: str | None = None):
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        released: str | None,
+        limits: dict[str, Any],
+        predict,
+        close=None,
+        device: str | None = None,
+    ):
         self.name, self.description, self.released, self.limits = name, description, released, limits
         self.device = device  # where it actually runs, when the family overrides the requested device
         self._predict, self._close = predict, close

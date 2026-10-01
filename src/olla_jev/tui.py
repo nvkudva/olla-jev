@@ -45,14 +45,23 @@ class Setup(App[dict[str, Any] | None]):
             for e in CATALOG:
                 mark = "✓" if e.name.split(":")[0] in have else " "
                 default = "  (default)" if e.name == config.DEFAULT_MODEL else ""
-                options.append(Option(f"{mark} {e.name:<48} {e.size_gb:>5.2f} GB  {e.languages:<14} {e.description}{default}", id=e.name))
+                options.append(
+                    Option(
+                        f"{mark} {e.name:<48} {e.size_gb:>5.2f} GB  {e.languages:<14} {e.description}{default}",
+                        id=e.name,
+                    )
+                )
             options.append(Option("  Paste any Hugging Face repo id…", id=PASTE))
             yield OptionList(*options, id="models")
             yield Input(placeholder="user/repo or user/repo:Q4_K_M", id="paste")
             with Horizontal(classes="row"):
                 yield Label("Device")
-                yield Select([(d, d) for d in ("auto", "mps", "cuda", "cpu")], value=saved.get("device", "auto"),
-                             allow_blank=False, id="device")
+                yield Select(
+                    [(d, d) for d in ("auto", "mps", "cuda", "cpu")],
+                    value=saved.get("device", "auto"),
+                    allow_blank=False,
+                    id="device",
+                )
                 yield Label("Host")
                 yield Input(saved.get("host", "127.0.0.1"), id="host")
                 yield Label("Port")
@@ -96,12 +105,14 @@ class Setup(App[dict[str, Any] | None]):
             self.notify("Paste a repo id first", severity="error")
             return
         port = self.query_one("#port", Input).value.strip()
-        self.exit({
-            "default_model": model,
-            "device": self.query_one("#device", Select).value,
-            "host": self.query_one("#host", Input).value.strip() or "127.0.0.1",
-            "port": int(port) if port.isdigit() else config.DEFAULT_PORT,
-        })
+        self.exit(
+            {
+                "default_model": model,
+                "device": self.query_one("#device", Select).value,
+                "host": self.query_one("#host", Input).value.strip() or "127.0.0.1",
+                "port": int(port) if port.isdigit() else config.DEFAULT_PORT,
+            }
+        )
 
 
 def setup() -> bool:

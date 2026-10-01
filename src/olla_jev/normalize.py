@@ -53,9 +53,11 @@ def answer(question: dict[str, Any], raw: dict[str, Any]) -> dict[str, Any]:
         names = list(question["criteria"])
         probs = raw.get("probabilities") or {}
         p = _normalised([float(probs.get(n, 0.0)) for n in names])
-        out["choice"] = raw.get("choice") if raw.get("choice") in names else names[max(range(len(p)), key=p.__getitem__)]
+        out["choice"] = (
+            raw.get("choice") if raw.get("choice") in names else names[max(range(len(p)), key=p.__getitem__)]
+        )
         out["confidence"] = round(choice_confidence(p), ND)
-        out["probabilities"] = {n: round(x, ND) for n, x in zip(names, p)}
+        out["probabilities"] = {n: round(x, ND) for n, x in zip(names, p, strict=False)}
     elif kind == "score":
         levels = question["criteria"]
         probs = raw.get("probabilities") or {}

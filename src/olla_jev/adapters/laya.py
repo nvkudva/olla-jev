@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import has, instructions_or_name
+from . import instructions_or_name
 from .base import Loaded
 
 # Context lengths from the model cards; laya does not expose them.
@@ -15,7 +15,6 @@ ALLOW = ["rl_agent_config.json", "model.safetensors", "tokenizer/*", "encoder/*"
 class _Laya:
     name = "laya"
     runs_repo_code = False
-
 
     def limits(self, r) -> dict:
         return {"max_tokens": CONTEXT.get(r.repo_id, 1024)}

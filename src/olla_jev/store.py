@@ -51,7 +51,11 @@ def _remote_files(repo_id: str, revision: str | None) -> tuple[str, str | None, 
     try:
         info = HfApi().model_info(repo_id, revision=revision, files_metadata=False)
     except RepositoryNotFoundError:
-        raise LookupError(f"model {repo_id!r} not found on Hugging Face (private or gated repos need `hf auth login`)") from None
+        raise LookupError(
+            f"model {repo_id!r} not found on Hugging Face (private or gated repos need `hf auth login`)"
+        ) from None
+    if info.sha is None:
+        raise LookupError(f"Hugging Face returned no commit for {repo_id!r}")
     created = info.created_at.date().isoformat() if info.created_at else None
     return info.sha, created, [s.rfilename for s in info.siblings or []]
 
@@ -90,6 +94,7 @@ def resolve(name: str, *, online: bool = True) -> Resolved:
             revision = sha
             _pin(ref.repo_id, sha, created)
         gguf = _pick(ref, files)
+    assert revision is not None  # pinned above, or taken from the pin
     family = detect(ref.repo_id, files)
     resolved = Resolved(ref, family, revision, files, gguf)
     resolved.allow = family.allow_patterns(resolved)

@@ -23,9 +23,6 @@ from typing import Any
 from . import config, store
 from .manager import canonical, default_model, lookup
 
-DEFAULT_LOG = "server.log"
-
-
 # ---- talking to a running server ------------------------------------------------------------------
 
 
@@ -41,7 +38,9 @@ def server_url() -> str:
 
 def call(method: str, path: str, body: dict[str, Any] | None = None, timeout: float = 600) -> Any:
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(server_url() + path, data=data, method=method, headers={"content-type": "application/json"})
+    req = urllib.request.Request(
+        server_url() + path, data=data, method=method, headers={"content-type": "application/json"}
+    )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read() or b"null")
@@ -114,7 +113,9 @@ def cmd_list(args: argparse.Namespace) -> None:
     print(f"{'NAME':<{width}}  {'FAMILY':<16} {'SIZE':>8}  MODIFIED")
     for m in rows:
         mark = " *" if m["name"] == default else ""
-        print(f"{m['name']:<{width}}  {m['details']['family']:<16} {m['size'] / 1e9:>6.2f} GB  {m['modified_at'][:10]}{mark}")
+        print(
+            f"{m['name']:<{width}}  {m['details']['family']:<16} {m['size'] / 1e9:>6.2f} GB  {m['modified_at'][:10]}{mark}"
+        )
 
 
 def canonical_or(name: str) -> str:
@@ -135,7 +136,9 @@ def cmd_show(args: argparse.Namespace) -> None:
     if r.gguf:
         print(f"  file         {r.gguf}")
     print(f"  released     {store.released(r.repo_id) or '-'}")
-    print(f"  repo code    {'yes, ' + ('trusted' if store.is_trusted(r) else 'NOT trusted') if r.family.runs_repo_code else 'no'}")
+    print(
+        f"  repo code    {'yes, ' + ('trusted' if store.is_trusted(r) else 'NOT trusted') if r.family.runs_repo_code else 'no'}"
+    )
     for key, value in r.family.limits(r).items():
         print(f"  {key:<12} {value}")
     print(f"  path         {store.local_path(r)}")
@@ -206,6 +209,9 @@ def bind(host: str, port: int, scan: bool, tries: int = 50) -> tuple[socket.sock
 
 def configure_logging(path: str) -> None:
     """Everything at INFO to the file, warnings and worse to the console."""
+    from pathlib import Path
+
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     file = logging.handlers.RotatingFileHandler(path, maxBytes=5_000_000, backupCount=3, encoding="utf-8")
@@ -228,7 +234,9 @@ def cmd_serve(args: argparse.Namespace) -> None:
 
     from . import api
 
-    if getattr(args, "setup", False) or ("default_model" not in config.load() and sys.stdin.isatty() and not args.model):
+    if getattr(args, "setup", False) or (
+        "default_model" not in config.load() and sys.stdin.isatty() and not args.model
+    ):
         from .tui import setup
 
         if not setup():
@@ -240,6 +248,7 @@ def cmd_serve(args: argparse.Namespace) -> None:
     port = args.port or (env_port if os.environ.get("OLLAJEV_HOST") else data.get("port") or env_port)
     model = args.model or default_model()
 
+    args.log_file = args.log_file or str(config.log_dir() / "server.log")
     configure_logging(args.log_file)
     sock, port = bind(host, port, scan=not explicit)
     base = f"http://{url_host(host)}:{port}"
@@ -256,31 +265,35 @@ def cmd_serve(args: argparse.Namespace) -> None:
     if api.preload:
         print(f"==> Loading {api.preload}", flush=True)
         api.pin_preload = True
-    threading.Thread(target=_announce_when_ready, args=(base, api.preload, not args.no_browser, args.log_file), daemon=True).start()
+    threading.Thread(
+        target=_announce_when_ready, args=(base, api.preload, not args.no_browser, args.log_file), daemon=True
+    ).start()
     uvicorn.Server(uvicorn.Config(api.app, log_config=None, log_level="info")).run(sockets=[sock])
 
 
 def banner(base: str, model: str | None, log_file: str) -> str:
-    return "\n".join([
-        "",
-        f"==> Ready on {base}" + (f", serving {model}" if model else ""),
-        "",
-        "    Jev / System One API",
-        f"      GET   {base}/v1/models        downloaded models",
-        f"      POST  {base}/v1/systemone     answer questions about a state (\"model\" picks the model)",
-        "",
-        "    Model management (Ollama style)",
-        f"      GET   {base}/api/tags  ·  /api/ps  ·  POST /api/pull  ·  /api/show  ·  DELETE /api/delete",
-        "",
-        f"    Demo page   {base}/demo",
-        "",
-        "    For the TypeSafe SDK:",
-        f"      export TYPESAFE_BASE_URL={base}",
-        "      export TYPESAFE_API_KEY=local",
-        "",
-        f"    Logging to {log_file}. Ctrl-C to stop.",
-        "",
-    ])
+    return "\n".join(
+        [
+            "",
+            f"==> Ready on {base}" + (f", serving {model}" if model else ""),
+            "",
+            "    Jev / System One API",
+            f"      GET   {base}/v1/models        downloaded models",
+            f'      POST  {base}/v1/systemone     answer questions about a state ("model" picks the model)',
+            "",
+            "    Model management (Ollama style)",
+            f"      GET   {base}/api/tags  ·  /api/ps  ·  POST /api/pull  ·  /api/show  ·  DELETE /api/delete",
+            "",
+            f"    Demo page   {base}/demo",
+            "",
+            "    For the TypeSafe SDK:",
+            f"      export TYPESAFE_BASE_URL={base}",
+            "      export TYPESAFE_API_KEY=local",
+            "",
+            f"    Logging to {log_file}. Ctrl-C to stop.",
+            "",
+        ]
+    )
 
 
 def _announce_when_ready(base: str, model: str | None, open_browser: bool, log_file: str) -> None:
@@ -313,7 +326,9 @@ def cmd_run(args: argparse.Namespace) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="olla-jev", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        prog="olla-jev", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--version", action="version", version=version("olla-jev"))
     parser.set_defaults(func=cmd_serve, model=None)
 
@@ -321,7 +336,7 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--host", help="bind address (default: 127.0.0.1, or OLLAJEV_HOST)")
         p.add_argument("--port", type=int, help="port (default: the first free one from 8000)")
         p.add_argument("--no-browser", action="store_true", help="do not open the demo page")
-        p.add_argument("--log-file", default=DEFAULT_LOG, help=f"request and error log (default: {DEFAULT_LOG})")
+        p.add_argument("--log-file", help="request and error log (default: server.log in the OS log folder)")
 
     serve_options(parser)
     sub = parser.add_subparsers(dest="command", metavar="command")

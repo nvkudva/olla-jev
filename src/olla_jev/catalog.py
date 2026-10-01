@@ -31,5 +31,10 @@ CATALOG: list[Entry] = [
     Entry("jaredpalmer/kev-0.8b", 1.7, "English", "Kev, LoRA + pointer head on Qwen3.5-0.8B"),
     Entry("internlm/Intern-Decision-0.8B", 1.7, "Multilingual", "Intern-Decision, Qwen3.5-0.8B"),
     Entry("llm-semantic-router/Decision-1.0-Kai-0.6B", 2.28, "English", "Decision-1.0 Kai, Vela encoder"),
-    Entry("llm-semantic-router/Decision-1.0-Lex-0.6B", 2.28, "English", "Decision-1.0 Lex, Kai tuned for support, invoices, agent traces"),
+    Entry(
+        "llm-semantic-router/Decision-1.0-Lex-0.6B",
+        2.28,
+        "English",
+        "Decision-1.0 Lex, Kai tuned for support, invoices, agent traces",
+    ),
 ]
