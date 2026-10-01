@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from huggingface_hub import CachedRevisionInfo, HfApi, HFCacheInfo, snapshot_download
 from huggingface_hub import scan_cache_dir as _scan_cache_dir
@@ -172,6 +173,16 @@ def delete_file(r: Resolved) -> int:
     freed = blob.stat().st_size
     blob.unlink()
     return freed
+
+
+def remove(r: Resolved) -> int:
+    """Delete what `r` names: one quant when the repo has others on disk, else the whole repo. Bytes freed."""
+    path = local_path(r)
+    if r.gguf and path:
+        name = r.gguf.rsplit("/", 1)[-1]
+        if any(p.name != name for p in Path(path).glob("**/*.gguf")):
+            return delete_file(r)
+    return delete(r.repo_id)
 
 
 def delete(repo_id: str) -> int:

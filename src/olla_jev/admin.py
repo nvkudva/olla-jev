@@ -200,11 +200,7 @@ def api_delete(req: ModelRef) -> Any:
     except LookupError as exc:
         return JSONResponse(status_code=404, content={"error": str(exc)})
     api.current_manager().unload(canonical(r))
-    path, gguf = store.local_path(r), r.gguf
-    others = [p for p in Path(path).glob("**/*.gguf") if p.name != Path(gguf).name] if gguf and path else []
-    if others:  # other quants of this repo stay; remove only this file
-        return {"status": "success", "freed": store.delete_file(r)}
-    return {"status": "success", "freed": store.delete(r.repo_id)}
+    return {"status": "success", "freed": store.remove(r)}
 
 
 @router.post("/copy")
