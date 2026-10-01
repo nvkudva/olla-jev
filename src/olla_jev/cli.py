@@ -242,6 +242,8 @@ def cmd_serve(args: argparse.Namespace) -> None:
         if not setup():
             return
     data = config.load()
+    for check in (config.keep_alive, config.max_loaded_models, config.max_body_bytes):
+        check()  # fail on a bad value now, not on a request
     env_host, env_port = config.host()
     host = args.host or data.get("host") or env_host
     explicit = args.port is not None or bool(os.environ.get("OLLAJEV_HOST"))

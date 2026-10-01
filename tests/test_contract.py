@@ -33,7 +33,7 @@ class StubManager:
                 answers[qid] = NOUL
             elif q["type"] == "choice":
                 answers[qid] = {
-                    "choice": list(q["criteria"])[0],
+                    "choice": next(iter(q["criteria"])),
                     "probabilities": {k: 1 / len(q["criteria"]) for k in q["criteria"]},
                 }
             else:

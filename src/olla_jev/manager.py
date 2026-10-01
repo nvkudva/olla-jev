@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import gc
 import logging
 import threading
@@ -185,12 +186,10 @@ def check_limits(limits: dict[str, Any], questions: dict[str, dict[str, Any]]) -
 
 
 def _empty_device_cache() -> None:
-    try:
+    with contextlib.suppress(Exception):  # cache release is best effort
         import torch
 
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         elif torch.backends.mps.is_available():
             torch.mps.empty_cache()
-    except Exception:  # cache release is best effort
-        pass

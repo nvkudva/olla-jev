@@ -81,6 +81,10 @@ pin_preload = False
 # Host header names `serve` accepts when bound to a loopback address; blocks DNS rebinding.
 # None means no check, as for a non-loopback bind (which requires an API key instead).
 allowed_hosts: frozenset[str] | None = None
+DEMO_CSP = (
+    "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+    "object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+)
 OPEN_PATHS = ("/", "/demo", "/static/")  # the health probe and the demo page need no key
 
 log = logging.getLogger(__name__)
@@ -108,6 +112,9 @@ async def guard(request: Request, call_next: Any) -> Any:
         host = _hostname(request.headers.get("host", ""))
         if host not in allowed_hosts:
             return _invalid([], "host not allowed", "forbidden_host", 403)
+    length = request.headers.get("content-length", "")
+    if length.isdigit() and int(length) > config.max_body_bytes():
+        return _invalid([], "request body too large", "payload_too_large", 413)
     key = config.api_key()
     path = request.url.path
     if key and path != "/" and not path.startswith(OPEN_PATHS[1:]):
@@ -148,7 +155,7 @@ async def health() -> dict[str, Any]:
 
 @app.get("/demo")
 async def demo() -> FileResponse:
-    return FileResponse(STATIC_DIR / "demo.html", media_type="text/html")
+    return FileResponse(STATIC_DIR / "demo.html", media_type="text/html", headers={"content-security-policy": DEMO_CSP})
 
 
 @app.get("/ui/presets")

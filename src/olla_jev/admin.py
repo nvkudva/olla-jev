@@ -41,16 +41,6 @@ class CopyRequest(BaseModel):
     destination: str
 
 
-def _snapshot_dir(repo_id: str, revision: str) -> Path | None:
-    info = store.scan_cache_dir(config.models_dir())
-    for repo in info.repos if info else ():
-        if repo.repo_id == repo_id:
-            for rev in repo.revisions:
-                if rev.commit_hash == revision:
-                    return Path(rev.snapshot_path)
-    return None
-
-
 def _describe(name: str, r: store.Resolved, size: int, modified: float) -> dict[str, Any]:
     return {
         "name": name,
@@ -75,9 +65,10 @@ def tags() -> list[dict[str, Any]]:
     out = []
     for repo_id, (size, modified) in sorted(store.downloaded().items()):
         revision = store.pins()[repo_id]
-        snap = _snapshot_dir(repo_id, revision)
-        if snap is None:
+        rev = store.snapshot(repo_id, revision)
+        if rev is None:
             continue
+        snap = Path(rev.snapshot_path)
         ggufs = sorted(p.name for p in snap.glob("**/*.gguf"))
         names = [f"{repo_id}:{quant_of(g) or g}" for g in ggufs] or [repo_id]
         for name in names:
@@ -211,13 +202,8 @@ def api_delete(req: ModelRef) -> Any:
     api.current_manager().unload(canonical(r))
     path, gguf = store.local_path(r), r.gguf
     others = [p for p in Path(path).glob("**/*.gguf") if p.name != Path(gguf).name] if gguf and path else []
-    if gguf and path and others:  # other quants of this repo stay; remove only this file and its blob
-        link = Path(path) / gguf
-        blob = link.resolve()
-        freed = blob.stat().st_size
-        link.unlink()
-        blob.unlink()
-        return {"status": "success", "freed": freed}
+    if others:  # other quants of this repo stay; remove only this file
+        return {"status": "success", "freed": store.delete_file(r)}
     return {"status": "success", "freed": store.delete(r.repo_id)}
 
 

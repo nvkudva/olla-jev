@@ -46,11 +46,17 @@ def host() -> tuple[str, int]:
         return "127.0.0.1", DEFAULT_PORT
     if value.startswith("["):  # [::1]:8000
         addr, _, port = value[1:].partition("]")
-        return addr, int(port.lstrip(":") or DEFAULT_PORT)
+        return addr, _port(port.lstrip(":") or str(DEFAULT_PORT))
     if value.count(":") == 1:
         addr, port = value.split(":")
-        return addr or "127.0.0.1", int(port)
+        return addr or "127.0.0.1", _port(port)
     return value, DEFAULT_PORT
+
+
+def _port(text: str) -> int:
+    if not text.isdigit() or not 0 < int(text) < 65536:
+        raise ValueError(f"OLLAJEV_HOST has an invalid port {text!r}; use host:port, e.g. 127.0.0.1:8000")
+    return int(text)
 
 
 def api_key() -> str | None:
@@ -69,11 +75,25 @@ def models_dir() -> str | None:
 
 def keep_alive() -> float:
     """Seconds an idle model stays loaded. OLLAJEV_KEEP_ALIVE accepts 300, 5m, 1h, or -1 for forever."""
-    return parse_duration(os.environ.get("OLLAJEV_KEEP_ALIVE", "5m"))
+    try:
+        return parse_duration(os.environ.get("OLLAJEV_KEEP_ALIVE", "5m"))
+    except ValueError:
+        raise ValueError("OLLAJEV_KEEP_ALIVE must be seconds or a duration like 5m, 1h, -1") from None
 
 
 def max_loaded_models() -> int:
-    return int(os.environ.get("OLLAJEV_MAX_LOADED_MODELS", "1"))
+    try:
+        return int(os.environ.get("OLLAJEV_MAX_LOADED_MODELS", "1"))
+    except ValueError:
+        raise ValueError("OLLAJEV_MAX_LOADED_MODELS must be a whole number") from None
+
+
+def max_body_bytes() -> int:
+    """Largest request body the API accepts. OLLAJEV_MAX_BODY_BYTES overrides the 8 MiB default."""
+    try:
+        return int(os.environ.get("OLLAJEV_MAX_BODY_BYTES", 8 * 1024 * 1024))
+    except ValueError:
+        raise ValueError("OLLAJEV_MAX_BODY_BYTES must be a whole number") from None
 
 
 def device() -> str | None:

@@ -230,6 +230,7 @@ most likely level, noul the same as a two-option choice.
 | `OLLAJEV_MODELS` | Hugging Face cache | where weights are stored |
 | `OLLAJEV_DEVICE` | best available | force `cpu`, `mps` or `cuda` |
 | `OLLAJEV_HOME` | `~/.olla-jev` | config (default model, pins, trusted commits, aliases) and `logs/` |
+| `OLLAJEV_MAX_BODY_BYTES` | `8388608` | largest request body the API accepts (413 above it) |
 | `OLLAJEV_API_KEY` | none | bearer token every API call must send; required to listen on a non-loopback address |
 
 The model `serve` preloads stays loaded until the server stops.

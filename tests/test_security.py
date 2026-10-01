@@ -159,3 +159,75 @@ def test_run_retries_when_the_slot_was_unloaded(home, monkeypatch):
     mgr._touch = lambda slot, keep_alive: None  # type: ignore[method-assign]
     slot, result = mgr.run("m", "state", {})
     assert slot is live and result == {"answers": {}}
+
+
+def test_oversized_body_is_413(client, monkeypatch):
+    monkeypatch.setenv("OLLAJEV_MAX_BODY_BYTES", "100")
+    out = client.post("/v1/systemone", content=b"x" * 500, headers={"content-type": "application/json"})
+    assert out.status_code == 413
+    assert out.json()["detail"][0]["type"] == "payload_too_large"
+
+
+def test_demo_page_sends_a_csp(client):
+    assert "default-src 'self'" in client.get("/demo").headers["content-security-policy"]
+
+
+@pytest.mark.parametrize(
+    "var,value",
+    [
+        ("OLLAJEV_HOST", "127.0.0.1:abc"),
+        ("OLLAJEV_HOST", "[::1]:99999"),
+        ("OLLAJEV_MAX_LOADED_MODELS", "two"),
+        ("OLLAJEV_KEEP_ALIVE", "soon"),
+        ("OLLAJEV_MAX_BODY_BYTES", "big"),
+    ],
+)
+def test_bad_env_names_the_variable(monkeypatch, var, value):
+    monkeypatch.setenv(var, value)
+    with pytest.raises(ValueError, match=var):
+        config.host(), config.keep_alive(), config.max_loaded_models(), config.max_body_bytes()
+
+
+def make_cache(tmp_path, rev_files):
+    """A fake Hugging Face snapshot dir: blobs/<sha> plus symlinks under snapshots/<rev>/."""
+    root = tmp_path / "models--u--r"
+    (root / "blobs").mkdir(parents=True)
+    for rev, files in rev_files.items():
+        (root / "snapshots" / rev).mkdir(parents=True)
+        for name, blob in files.items():
+            (root / "blobs" / blob).write_bytes(b"w" * 10)
+            (root / "snapshots" / rev / name).symlink_to(root / "blobs" / blob)
+    return root
+
+
+def delete_with(monkeypatch, root, rev):
+    snap = root / "snapshots" / rev
+    fake = SimpleNamespace(snapshot_path=snap)
+    monkeypatch.setattr(store, "snapshot", lambda repo_id, revision: fake)
+    return store.delete_file(SimpleNamespace(repo_id="u/r", revision=rev, gguf="m-Q4_K_M.gguf"))
+
+
+def test_delete_file_keeps_a_blob_another_revision_uses(tmp_path, monkeypatch):
+    root = make_cache(tmp_path, {"r1": {"m-Q4_K_M.gguf": "b1"}, "r2": {"m-Q4_K_M.gguf": "b1"}})
+    assert delete_with(monkeypatch, root, "r1") == 0
+    assert (root / "blobs" / "b1").exists()
+
+
+def test_delete_file_frees_an_unshared_blob(tmp_path, monkeypatch):
+    root = make_cache(tmp_path, {"r1": {"m-Q4_K_M.gguf": "b1", "m-Q8_0.gguf": "b2"}})
+    assert delete_with(monkeypatch, root, "r1") == 10
+    assert not (root / "blobs" / "b1").exists() and (root / "blobs" / "b2").exists()
+
+
+def test_failed_download_leaves_no_pin(home, monkeypatch):
+    def fail(*a, **k):
+        raise OSError("network down")
+
+    monkeypatch.setattr(store, "snapshot_download", fail)
+    r = SimpleNamespace(repo_id="u/r", revision="a" * 40, allow=None, created="2026-01-01")
+    with pytest.raises(OSError):
+        store.download(r)
+    assert store.pins() == {}
+    monkeypatch.setattr(store, "snapshot_download", lambda *a, **k: "/x")
+    store.download(r)
+    assert store.pins() == {"u/r": "a" * 40} and store.released("u/r") == "2026-01-01"

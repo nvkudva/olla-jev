@@ -211,3 +211,13 @@ Phase 1 names: `Mapika/decider-4b-GGUF:Q4_K_M` (default), `Mapika/decider-2b-GGU
 - CI (GitHub Actions): ruff, pyright, pytest on macOS/Linux/Windows, wheel build. PyPI publishing waits for the GitHub repo.
 - Rejected: an `init` command (means "create a project" in other tools; first-run setup is `olla-jev setup`). Rejected: click/typer (argparse covers the CLI).
 - `PLAN.md` / `TODO.md` stay at the repo root.
+
+### 2026-10-01 — Hardening and ~/.olla-jev
+
+- Config and logs live in `~/.olla-jev` (`OLLAJEV_HOME` overrides); this replaces the OS folders via platformdirs. A config in the old OS folder is read once and migrated on the next save. Config is JSON, written under a lock with an atomic replace.
+- `OLLAJEV_API_KEY` bearer auth; non-loopback bind is refused without it. Loopback binds check the Host header. Trust is CLI-only, never over HTTP.
+- A repo is pinned only after its download succeeds.
+- Dependencies are ranges in `pyproject.toml`; `uv.lock` holds exact versions.
+- Rejected: extras (`[gguf]`, `[torch]`): `pick_device` imports torch everywhere, so it needs a code split first.
+- Rejected: wider `requires-python`: torch and llama-cpp-python wheels for 3.13 are unverified.
+- Rejected: blocking eviction of the pinned preload: switching models on a max-1 server must keep working.

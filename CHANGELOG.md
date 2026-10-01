@@ -13,6 +13,7 @@ All notable changes to this project are documented here. The format follows
   address without it is refused. On loopback, only `localhost`, `127.0.0.1` and `[::1]` are
   accepted as Host (DNS-rebinding guard).
 - Model names reject `.`/`..` segments and foreign URL hosts.
+- Requests over `OLLAJEV_MAX_BODY_BYTES` (8 MiB) get 413. The demo page sends a Content-Security-Policy.
 
 ### Changed
 
@@ -28,6 +29,9 @@ All notable changes to this project are documented here. The format follows
   under its lock.
 - Two pulls of the same repo cannot run at once; unexpected pull errors are logged, not sent to the client.
 - Repo-code imports are serialised.
+- Removing one quant no longer deletes a blob another revision still uses.
+- A failed download no longer leaves a pin.
+- A bad `OLLAJEV_HOST`, `OLLAJEV_KEEP_ALIVE` or `OLLAJEV_MAX_LOADED_MODELS` gives a one-line error naming the variable.
 
 ### Added
 

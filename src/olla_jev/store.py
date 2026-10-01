@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from huggingface_hub import HfApi, HFCacheInfo, snapshot_download
+from huggingface_hub import CachedRevisionInfo, HfApi, HFCacheInfo, snapshot_download
 from huggingface_hub import scan_cache_dir as _scan_cache_dir
 from huggingface_hub.errors import CacheNotFound, LocalEntryNotFoundError, RepositoryNotFoundError
 
@@ -21,6 +21,7 @@ class Resolved:
     files: list[str]
     gguf: str | None = None  # the one .gguf file this name selects, for GGUF repos
     allow: list[str] | None = field(default=None)
+    created: str | None = None  # the repo's creation date, recorded as release_date once it is downloaded
 
     @property
     def name(self) -> str:
@@ -68,15 +69,21 @@ def _remote_files(repo_id: str, revision: str | None) -> tuple[str, str | None, 
     return info.sha, created, [s.rfilename for s in info.siblings or []]
 
 
-def _local_files(repo_id: str, revision: str) -> list[str] | None:
-    """The file list of a downloaded snapshot, so resolving works offline."""
+def snapshot(repo_id: str, revision: str) -> CachedRevisionInfo | None:
+    """The downloaded snapshot of a repo at a commit, or None."""
     info = scan_cache_dir(config.models_dir())
     for repo in info.repos if info else ():
         if repo.repo_id == repo_id:
             for rev in repo.revisions:
                 if rev.commit_hash == revision:
-                    return [str(f.file_path.relative_to(rev.snapshot_path)) for f in rev.files]
+                    return rev
     return None
+
+
+def _local_files(repo_id: str, revision: str) -> list[str] | None:
+    """The file list of a downloaded snapshot, so resolving works offline."""
+    rev = snapshot(repo_id, revision)
+    return [str(f.file_path.relative_to(rev.snapshot_path)) for f in rev.files] if rev else None
 
 
 def resolve(name: str, *, online: bool = True) -> Resolved:
@@ -85,6 +92,7 @@ def resolve(name: str, *, online: bool = True) -> Resolved:
     Offline (`online=False`) it uses only what is downloaded and raises LookupError otherwise.
     """
     ref = parse(name)
+    created = None
     revision = pins().get(ref.repo_id)
     files = _local_files(ref.repo_id, revision) if revision else None
     gguf = None
@@ -100,12 +108,12 @@ def resolve(name: str, *, online: bool = True) -> Resolved:
             raise LookupError(f"{ref.name} is not downloaded; run: olla-jev pull {ref.name}")
         sha, created, files = _remote_files(ref.repo_id, revision)
         if revision is None:
-            revision = sha
-            _pin(ref.repo_id, sha, created)
+            revision = sha  # pinned by download(), once the weights are on disk
         gguf = _pick(ref, files)
-    assert revision is not None  # pinned above, or taken from the pin
+    if revision is None:  # unreachable: set from the pin or from the remote lookup above
+        raise LookupError(f"no revision for {ref.name}")
     family = detect(ref.repo_id, files)
-    resolved = Resolved(ref, family, revision, files, gguf)
+    resolved = Resolved(ref, family, revision, files, gguf, created=created)
     resolved.allow = family.allow_patterns(resolved)
     return resolved
 
@@ -128,7 +136,11 @@ def local_path(r: Resolved) -> str | None:
 
 
 def download(r: Resolved) -> str:
-    return snapshot_download(r.repo_id, revision=r.revision, allow_patterns=r.allow, cache_dir=config.models_dir())
+    """Fetch the snapshot, then pin the repo to this commit if it has no pin yet."""
+    path = snapshot_download(r.repo_id, revision=r.revision, allow_patterns=r.allow, cache_dir=config.models_dir())
+    if r.repo_id not in pins():
+        _pin(r.repo_id, r.revision, r.created)
+    return path
 
 
 def downloaded() -> dict[str, tuple[int, float]]:
@@ -140,6 +152,26 @@ def downloaded() -> dict[str, tuple[int, float]]:
         for r in (info.repos if info else ())
         if r.repo_id in wanted and r.repo_type == "model"
     }
+
+
+def delete_file(r: Resolved) -> int:
+    """Remove one weight file of a downloaded repo. Its blob goes only when no other snapshot links to it."""
+    rev = snapshot(r.repo_id, r.revision)
+    if rev is None or r.gguf is None:
+        return 0
+    link = rev.snapshot_path / r.gguf
+    blob = link.resolve()
+    shared = any(
+        other != link and other.resolve() == blob
+        for other in rev.snapshot_path.parent.glob("*/**/*")
+        if other.is_symlink()
+    )
+    link.unlink()
+    if shared:
+        return 0
+    freed = blob.stat().st_size
+    blob.unlink()
+    return freed
 
 
 def delete(repo_id: str) -> int:
