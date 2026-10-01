@@ -47,9 +47,36 @@ irm https://raw.githubusercontent.com/nvkudva/olla-jev/main/install.ps1 | iex
 - Add `--service` (`… | sh -s -- --service`) to also run the server in the background at every
   login: a launchd agent on macOS, a systemd user unit on Linux.
 - Already have uv? `uv tool install git+https://github.com/nvkudva/olla-jev` does the same.
-- Uninstall with `curl -fsSL https://raw.githubusercontent.com/nvkudva/olla-jev/main/install.sh | sh -s -- --uninstall`
-  (Windows: download `install.ps1` and run `.\install.ps1 -Uninstall`). It removes the command and
-  the service and keeps your config and downloaded models.
+- To remove it, see [Uninstall](#uninstall).
+
+## Uninstall
+
+macOS and Linux:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/nvkudva/olla-jev/main/install.sh | sh -s -- --uninstall
+```
+
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/nvkudva/olla-jev/main/install.ps1 -OutFile install.ps1
+.\install.ps1 -Uninstall
+```
+
+- This stops and removes the background service, if installed, and removes the `olla-jev` command.
+- Installed with uv directly? Run `olla-jev service uninstall`, then `uv tool uninstall olla-jev`.
+- Your config, logs and downloaded models are kept. To remove them too, delete these folders:
+
+| | macOS | Linux | Windows |
+|---|---|---|---|
+| Config | `~/Library/Application Support/olla-jev` | `~/.config/olla-jev` | `%LOCALAPPDATA%\olla-jev` |
+| Logs | `~/Library/Logs/olla-jev` | `~/.local/state/olla-jev` | `%LOCALAPPDATA%\olla-jev\Logs` |
+| Models | `~/.cache/huggingface/hub/models--<user>--<repo>` | same | same |
+
+The models folder is the shared Hugging Face cache, which other tools use too. Delete only the
+`models--…` folders of the models you pulled (`olla-jev list` shows them), or run `olla-jev rm <model>`
+for each one before uninstalling.
 
 ## Quick start
 
