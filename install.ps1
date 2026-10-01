@@ -16,7 +16,7 @@ function Say($msg) { Write-Host "==> $msg" }
 
 if ($Uninstall) {
   if (Get-Command uv -ErrorAction SilentlyContinue) { uv tool uninstall olla-jev }
-  Say "kept your config (%APPDATA%\olla-jev) and models (~\.cache\huggingface\hub)"
+  Say "kept your config (%LOCALAPPDATA%\olla-jev) and models (~\.cache\huggingface\hub)"
   exit 0
 }
 

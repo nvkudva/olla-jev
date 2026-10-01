@@ -38,7 +38,8 @@ class CopyRequest(BaseModel):
 
 
 def _snapshot_dir(repo_id: str, revision: str) -> Path | None:
-    for repo in store.scan_cache_dir(config.models_dir()).repos:
+    info = store.scan_cache_dir(config.models_dir())
+    for repo in info.repos if info else ():
         if repo.repo_id == repo_id:
             for rev in repo.revisions:
                 if rev.commit_hash == revision:

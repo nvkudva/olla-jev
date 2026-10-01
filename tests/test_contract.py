@@ -178,3 +178,10 @@ def test_limits_are_checked_before_the_model_runs():
     check_limits({"max_options": 255}, questions)
     with pytest.raises(ValueError, match="at most 1 questions"):
         check_limits({"max_questions": 1}, {**questions, "d": {"type": "noul"}})
+
+
+def test_fresh_machine_without_a_model_cache_lists_no_models(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("OLLAJEV_MODELS", str(tmp_path / "never-created"))
+    r = client.get("/v1/models")
+    assert r.status_code == 200 and r.json() == {"models": []}
+    assert client.get("/api/tags").json() == {"models": []}

@@ -34,8 +34,9 @@ irm https://raw.githubusercontent.com/nvkudva/olla-jev/main/install.ps1 | iex
 - Add `--service` (`… | sh -s -- --service`) to also run the server in the background at every
   login: a launchd agent on macOS, a systemd user unit on Linux.
 - Already have uv? `uv tool install git+https://github.com/nvkudva/olla-jev` does the same.
-- Uninstall with `install.sh --uninstall`. It removes the command and the service and keeps your
-  config and downloaded models.
+- Uninstall with `curl -fsSL https://raw.githubusercontent.com/nvkudva/olla-jev/main/install.sh | sh -s -- --uninstall`
+  (Windows: download `install.ps1` and run `.\install.ps1 -Uninstall`). It removes the command and
+  the service and keeps your config and downloaded models.
 
 ## Quick start
 
@@ -178,7 +179,7 @@ The model `serve` preloads stays loaded until the server stops.
 
 | | macOS | Linux | Windows |
 |---|---|---|---|
-| Config | `~/Library/Application Support/olla-jev` | `~/.config/olla-jev` | `%APPDATA%\olla-jev` |
+| Config | `~/Library/Application Support/olla-jev` | `~/.config/olla-jev` | `%LOCALAPPDATA%\olla-jev` |
 | Logs | `~/Library/Logs/olla-jev` | `~/.local/state/olla-jev/log` | `%LOCALAPPDATA%\olla-jev\Logs` |
 | Models | `~/.cache/huggingface/hub` | same | same |
 

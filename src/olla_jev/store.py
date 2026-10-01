@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from huggingface_hub import HfApi, scan_cache_dir, snapshot_download
-from huggingface_hub.errors import LocalEntryNotFoundError, RepositoryNotFoundError
+from huggingface_hub import HfApi, HFCacheInfo, snapshot_download
+from huggingface_hub import scan_cache_dir as _scan_cache_dir
+from huggingface_hub.errors import CacheNotFound, LocalEntryNotFoundError, RepositoryNotFoundError
 
 from . import config
 from .adapters import Family, detect
@@ -28,6 +29,14 @@ class Resolved:
     @property
     def repo_id(self) -> str:
         return self.ref.repo_id
+
+
+def scan_cache_dir(cache_dir: str | None = None) -> HFCacheInfo | None:
+    """The Hugging Face cache, or None before anything was ever downloaded to it."""
+    try:
+        return _scan_cache_dir(cache_dir)
+    except CacheNotFound:
+        return None
 
 
 def pins() -> dict[str, str]:
@@ -62,7 +71,8 @@ def _remote_files(repo_id: str, revision: str | None) -> tuple[str, str | None, 
 
 def _local_files(repo_id: str, revision: str) -> list[str] | None:
     """The file list of a downloaded snapshot, so resolving works offline."""
-    for repo in scan_cache_dir(config.models_dir()).repos:
+    info = scan_cache_dir(config.models_dir())
+    for repo in info.repos if info else ():
         if repo.repo_id == repo_id:
             for rev in repo.revisions:
                 if rev.commit_hash == revision:
@@ -125,9 +135,10 @@ def download(r: Resolved) -> str:
 def downloaded() -> dict[str, tuple[int, float]]:
     """repo_id -> (bytes on disk, last modified) for pinned repos in the cache."""
     wanted = pins()
+    info = scan_cache_dir(config.models_dir())
     return {
         r.repo_id: (r.size_on_disk, r.last_modified)
-        for r in scan_cache_dir(config.models_dir()).repos
+        for r in (info.repos if info else ())
         if r.repo_id in wanted and r.repo_type == "model"
     }
 
@@ -135,9 +146,11 @@ def downloaded() -> dict[str, tuple[int, float]]:
 def delete(repo_id: str) -> int:
     """Remove every downloaded revision of `repo_id` and forget its pin. Returns bytes freed."""
     info = scan_cache_dir(config.models_dir())
-    revisions = [rev.commit_hash for repo in info.repos if repo.repo_id == repo_id for rev in repo.revisions]
+    revisions = [
+        rev.commit_hash for repo in (info.repos if info else ()) if repo.repo_id == repo_id for rev in repo.revisions
+    ]
     freed = 0
-    if revisions:
+    if info and revisions:
         strategy = info.delete_revisions(*revisions)
         freed = strategy.expected_freed_size
         strategy.execute()
