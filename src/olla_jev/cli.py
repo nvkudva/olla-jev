@@ -156,8 +156,7 @@ def cmd_rm(args: argparse.Namespace) -> None:
             with config.edit() as data:
                 removed = data.get("aliases", {}).pop(name, None)
             if removed is None:
-                r = store.resolve(lookup(name), online=False)
-                store.delete(r.repo_id)
+                store.remove(store.resolve(lookup(name), online=False))
         print(f"deleted '{name}'")
 
 
@@ -237,9 +236,9 @@ def cmd_serve(args: argparse.Namespace) -> None:
     if getattr(args, "setup", False) or (
         "default_model" not in config.load() and sys.stdin.isatty() and not args.model
     ):
-        from .tui import setup
+        from .tui import manage
 
-        if not setup():
+        if not manage():
             return
     data = config.load()
     for check in (config.keep_alive, config.max_loaded_models, config.max_body_bytes):
@@ -396,7 +395,13 @@ def build_parser() -> argparse.ArgumentParser:
     serve_options(p)
 
     serve_options(
-        command("setup", "pick the default model, device and address, then serve", "olla-jev setup", cmd_setup)
+        command(
+            "setup",
+            "manage models (download, switch, ask, delete) and start the server",
+            "olla-jev setup",
+            cmd_setup,
+            aliases=("tui",),
+        )
     )
 
     p = command("run", "ask a model questions from the terminal", "olla-jev run SupersonicLabs/Julia-1", cmd_run)

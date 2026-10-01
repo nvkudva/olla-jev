@@ -70,12 +70,12 @@ for each one before uninstalling.
 ## Quick start
 
 ```sh
-olla-jev            # first run: pick a model, device and address; it downloads and serves
+olla-jev            # first run: opens the model manager; pick a model, press Enter, then s to serve
 olla-jev run        # in another terminal: ask the model questions
 ```
 
-- The setup screen lists the curated models, all under 4 GB. Run `olla-jev setup` to change your
-  choices later.
+- The model manager lists the curated models, all under 4 GB. Run `olla-jev setup` (or `olla-jev tui`)
+  to open it again.
 - The demo page opens at <http://127.0.0.1:8000/demo>.
 
 ## Example
@@ -115,7 +115,7 @@ A model name is its Hugging Face repo id: `<user>/<repo>`. Repos with several qu
 tag: `<user>/<repo>:<quant>` (case-insensitive) or `<user>/<repo>:<file.gguf>`. Without a tag,
 Q4_K_M is used. An `hf.co/` or `huggingface.co/` prefix is accepted and ignored.
 
-The setup screen offers these, all under 4 GB:
+The model manager lists these, all under 4 GB:
 
 | Model | Download | Runs on | Languages | Limits |
 |---|---|---|---|---|
@@ -150,7 +150,7 @@ To use a different model:
 | You want | Do this |
 |---|---|
 | Another model for one request | send `"model": "<name>"` in the `/v1/systemone` body; it loads on first use |
-| Another default model | `olla-jev setup`, pick a model; it saves the choice and starts the server (stop any running server first). A server already running picks up the saved default for requests that omit `model` |
+| Another default model | `olla-jev setup`, move to a model, press Enter (it downloads if needed and becomes the default), then `s` to serve. A server that is already running picks up the saved default for requests that omit `model` |
 | Serve a model once, without changing the default | `olla-jev serve <name>` |
 | Ask a model from the terminal | `olla-jev run <name>` |
 | A short name for a long one | `olla-jev cp <name> julia`, then send `"model": "julia"` |
@@ -192,11 +192,33 @@ send one, so use it without a key. Put TLS in front (a reverse proxy) before exp
 
 Run `olla-jev <command> --help` for options and an example.
 
+### Model manager
+
+`olla-jev setup` opens one screen for the model commands. Move with the arrow keys:
+
+| Key | Same as | What it does |
+|---|---|---|
+| Enter | `pull` + default | download the model if needed and make it the default |
+| `p` | `pull` | download only |
+| `r` | `run` | ask the model questions |
+| `u` | `stop` | unload it from memory |
+| `x` | `rm` | delete the download |
+| `a` | `cp` | give it a short name |
+| `i` | `show` | family, commit, limits, path |
+| `n` | `pull` | add any Hugging Face repo by name |
+| `o` | | device, address and port for the server |
+| `b` | `service` | install or remove the background service |
+| `s` | `serve` | start the server and leave the manager |
+| `q` | | quit |
+
+The table marks downloaded models (✓), the default and the loaded ones. The header shows whether a
+server is running.
+
 | Command | What it does |
 |---|---|
 | `olla-jev` | start the server; the first run opens setup |
 | `olla-jev serve [model]` | start the server. Options: `--host`, `--port`, `--no-browser`, `--log-file` |
-| `olla-jev setup` | pick the default model, device and address, then serve |
+| `olla-jev setup` (`tui`) | open the model manager (below) |
 | `olla-jev run [model]` | ask questions from the terminal |
 | `olla-jev pull <model>… [--trust]` | download models; `--trust` skips the repo-code question |
 | `olla-jev list` (`ls`) | downloaded models, family, size and date; `*` marks the default |

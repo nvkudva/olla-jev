@@ -17,6 +17,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- `olla-jev setup` (alias `tui`) is now a model manager: download, switch the default, ask, unload, delete,
+  alias, inspect and serve from one screen. It no longer shows buttons and form fields.
+
 - Config and logs now live in `~/.olla-jev` (override with `OLLAJEV_HOME`). A config in the old OS
   folder is read once and moved on the next save.
 - Dependencies use compatible ranges in `pyproject.toml`; `uv.lock` keeps exact versions.
