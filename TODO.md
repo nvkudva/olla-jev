@@ -48,9 +48,9 @@
 - [x] `olla-jev service` (launchd, systemd user unit)
 - [x] install.sh / install.ps1 with --service and --uninstall; tested locally on macOS
 - [x] CHANGELOG, CONTRIBUTING, NOTICE, CI workflow
-- [ ] Create GitHub repo nvkudva/olla-jev and push (needs user go-ahead)
-- [ ] Test install.sh piped from GitHub and install.ps1 on Windows once the repo exists
-- [ ] Verify CI on GitHub runners (llama-cpp-python builds from source on Linux and Windows)
+- [x] Create GitHub repo nvkudva/olla-jev and push (needs user go-ahead)
+- [ ] Test install.ps1 on Windows (piped install.sh tested on macOS)
+- [x] Verify CI on GitHub runners (llama-cpp-python builds from source on Linux and Windows)
 - [ ] PyPI release with trusted publishing on a version tag
 - [ ] Shell completion (optional)
 - [ ] Rename the local project folder from free-jev-server to olla-jev
