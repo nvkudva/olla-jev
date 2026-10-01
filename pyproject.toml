@@ -1,0 +1,44 @@
+[project]
+name = "free-jev-server"
+version = "0.1.0"
+description = "Run System One decision models from Hugging Face locally behind the Jev / System One API"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "torch==2.14.0",
+    "transformers==5.17.0",
+    "huggingface-hub==1.32.0",
+    "fastapi==0.141.1",
+    "uvicorn==0.53.0",
+    "textual==8.2.8",
+]
+
+[project.scripts]
+free-jev-server = "freejev.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.1.1",
+    "typesafe-sdk==0.7.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = true
+
+# PyPI's Linux torch wheel drags in the whole CUDA toolkit (several GB). Default Linux to the
+# CPU build; for a GPU box, sync against https://download.pytorch.org/whl/cu130 instead.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[tool.hatch.build.targets.wheel]
+packages = ["freejev"]
