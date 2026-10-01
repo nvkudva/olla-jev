@@ -1,7 +1,20 @@
 # olla-jev
 
+> **Ollama, but for Jev-style decision models.** Pull a System One model from Hugging Face, run it
+> on your machine, and call it through the same `/v1/systemone` API as TypeSafe's hosted Jev.
+
+| | Ollama | olla-jev |
+|---|---|---|
+| Runs | chat and text-generation LLMs | System One decision models (Jev-style) |
+| Answers with | generated text | probabilities for typed questions, one forward pass |
+| Models from | ollama.com library, Hugging Face GGUF | Hugging Face (decider, laya, Julia, kev, …) |
+| Model names | `hf.co/user/repo:Q4_K_M` | `user/repo:Q4_K_M`, same tag rules |
+| Commands | `serve`, `run`, `pull`, `list`, `ps`, `show`, `rm`, `stop`, `cp` | the same |
+| API | OpenAI-compatible `/v1/chat/completions` | Jev-compatible `/v1/systemone` |
+| Background | menu-bar app / systemd service | `olla-jev service install` (launchd / systemd) |
+
 A local server that runs **System One decision models** from Hugging Face behind TypeSafe's
-**Jev / System One** wire API — the way Ollama runs LLMs.
+**Jev / System One** wire API.
 
 > **Already calling TypeSafe or Jev? This is a drop-in replacement.** Point `TYPESAFE_BASE_URL` at
 > this server and the stock `typesafe-sdk` keeps working: same routes, same request and response
