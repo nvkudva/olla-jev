@@ -54,3 +54,6 @@
 - [ ] PyPI release with trusted publishing on a version tag
 - [ ] Shell completion (optional)
 - [ ] Rename the local project folder from free-jev-server to olla-jev
+- [ ] Homebrew: tap repo nvkudva/homebrew-tap with Formula/olla-jev.rb (depends_on uv, venv in libexec pinned to the PyPI version, service block running `olla-jev serve --no-browser`, test block `olla-jev --version`); needs the PyPI release first
+- [ ] Homebrew: GitHub Action to bump formula version and sha256 on each PyPI release
+- [ ] Homebrew: README "Install with Homebrew" section (`brew install nvkudva/tap/olla-jev`, `brew services start olla-jev`; do not combine with `olla-jev service install`)
