@@ -1,7 +1,7 @@
 """Run System One decision models from Hugging Face behind the Jev API.
 
-Commands mirror Ollama's: serve, run, pull, list, ps, show, rm, stop, cp. With no command it serves,
-and the first run opens a setup screen to pick a model.
+Commands mirror Ollama's. With no command it serves, and the first run opens a
+setup screen to pick a model.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ import argparse
 import json
 import logging
 import logging.handlers
+import os
 import socket
 import sys
 import threading
@@ -28,8 +29,6 @@ from .manager import canonical, default_model, lookup
 
 def server_url() -> str:
     """OLLAJEV_HOST when set, else the address the last `serve` bound, else the default."""
-    import os
-
     if os.environ.get("OLLAJEV_HOST"):
         host, port = config.host()
         return f"http://{url_host(host)}:{port}"
@@ -228,8 +227,6 @@ def url_host(host: str) -> str:
 
 
 def cmd_serve(args: argparse.Namespace) -> None:
-    import os
-
     import uvicorn
 
     from . import api
@@ -325,11 +322,40 @@ def cmd_run(args: argparse.Namespace) -> None:
 # ---- parser -----------------------------------------------------------------------------------------
 
 
+EXAMPLES = """\
+examples:
+  olla-jev                                  start the server (first run opens setup)
+  olla-jev pull SupersonicLabs/Julia-1      download a model
+  olla-jev pull Mapika/decider-2b-GGUF:Q8_0 download one quantized file
+  olla-jev run                              ask the default model questions
+  olla-jev service install                  run the server in the background at login
+
+environment:
+  OLLAJEV_HOST, OLLAJEV_KEEP_ALIVE, OLLAJEV_MAX_LOADED_MODELS, OLLAJEV_MODELS,
+  OLLAJEV_DEVICE, OLLAJEV_HOME   (see README)
+"""
+
+
+def cmd_service(args: argparse.Namespace) -> None:
+    from . import service
+
+    if args.action == "install":
+        print(service.install())
+    elif args.action == "uninstall":
+        print(service.uninstall())
+    elif args.action == "status":
+        running, text = service.status()
+        print(text)
+        if not running:
+            raise SystemExit(1)
+    else:
+        os.execvp(service.log_command()[0], service.log_command())
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="olla-jev", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    parser.add_argument("--version", action="version", version=version("olla-jev"))
+    formatter = argparse.RawDescriptionHelpFormatter
+    parser = argparse.ArgumentParser(prog="olla-jev", description=__doc__, epilog=EXAMPLES, formatter_class=formatter)
+    parser.add_argument("-V", "--version", action="version", version=f"olla-jev {version('olla-jev')}")
     parser.set_defaults(func=cmd_serve, model=None)
 
     def serve_options(p: argparse.ArgumentParser) -> None:
@@ -339,48 +365,57 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--log-file", help="request and error log (default: server.log in the OS log folder)")
 
     serve_options(parser)
-    sub = parser.add_subparsers(dest="command", metavar="command")
+    sub = parser.add_subparsers(dest="command", metavar="<command>", title="commands")
 
-    p = sub.add_parser("serve", help="start the server")
+    def command(name: str, help_text: str, example: str, func, aliases: tuple[str, ...] = ()):
+        p = sub.add_parser(
+            name,
+            help=help_text,
+            description=help_text,
+            aliases=list(aliases),
+            epilog=f"example:\n  {example}",
+            formatter_class=formatter,
+        )
+        p.set_defaults(func=func)
+        return p
+
+    p = command("serve", "start the server", "olla-jev serve Mapika/decider-4b-GGUF:Q4_K_M --port 8000", cmd_serve)
     p.add_argument("model", nargs="?", help="model to load at start (default: the saved default)")
     serve_options(p)
-    p.set_defaults(func=cmd_serve)
 
-    p = sub.add_parser("setup", help="pick the default model and server options, then serve")
-    serve_options(p)
-    p.set_defaults(func=cmd_setup)
+    serve_options(
+        command("setup", "pick the default model, device and address, then serve", "olla-jev setup", cmd_setup)
+    )
 
-    p = sub.add_parser("run", help="ask a model questions interactively")
+    p = command("run", "ask a model questions from the terminal", "olla-jev run SupersonicLabs/Julia-1", cmd_run)
     p.add_argument("model", nargs="?", help="model (default: the saved default)")
-    p.set_defaults(func=cmd_run)
 
-    p = sub.add_parser("pull", help="download a model")
-    p.add_argument("model", nargs="+", help="e.g. SupersonicLabs/Julia-1 or Mapika/decider-4b-GGUF:Q4_K_M")
+    p = command("pull", "download models", "olla-jev pull Mapika/decider-2b-GGUF:Q8_0 --trust", cmd_pull)
+    p.add_argument("model", nargs="+", help="<user>/<repo>[:<quant>|:<file.gguf>]")
     p.add_argument("--trust", action="store_true", help="trust the repo's Python code without asking")
-    p.set_defaults(func=cmd_pull)
 
-    p = sub.add_parser("list", aliases=["ls"], help="list downloaded models")
-    p.set_defaults(func=cmd_list)
+    command("list", "list downloaded models", "olla-jev list", cmd_list, aliases=("ls",))
+    command("ps", "list loaded models", "olla-jev ps", cmd_ps)
 
-    p = sub.add_parser("ps", help="list loaded models")
-    p.set_defaults(func=cmd_ps)
-
-    p = sub.add_parser("show", help="show a model's details and limits")
+    p = command(
+        "show", "show a model's family, pinned commit and limits", "olla-jev show SupersonicLabs/Julia-1", cmd_show
+    )
     p.add_argument("model")
-    p.set_defaults(func=cmd_show)
 
-    p = sub.add_parser("rm", help="delete a downloaded model")
+    p = command("rm", "delete downloaded models", "olla-jev rm jaredpalmer/kev-0.6b", cmd_rm)
     p.add_argument("model", nargs="+")
-    p.set_defaults(func=cmd_rm)
 
-    p = sub.add_parser("stop", help="unload a running model")
+    p = command("stop", "unload a running model", "olla-jev stop SupersonicLabs/Julia-1", cmd_stop)
     p.add_argument("model")
-    p.set_defaults(func=cmd_stop)
 
-    p = sub.add_parser("cp", help="copy a model under a new name")
+    p = command("cp", "give a model another name", "olla-jev cp SupersonicLabs/Julia-1 julia", cmd_cp)
     p.add_argument("source")
     p.add_argument("destination")
-    p.set_defaults(func=cmd_cp)
+
+    p = command(
+        "service", "run the server in the background at login (macOS, Linux)", "olla-jev service install", cmd_service
+    )
+    p.add_argument("action", choices=["install", "uninstall", "status", "logs"])
     return parser
 
 
