@@ -12,7 +12,8 @@
 #   --uninstall       remove the service and the command (your config and models are kept)
 set -eu
 
-REPO_URL="git+https://github.com/nvkudva/olla-jev"
+# Pinned to a release tag, so a piped install never builds an unreviewed branch tip.
+REPO_URL="git+https://github.com/nvkudva/olla-jev@v0.1.0"
 SERVICE=0
 UNINSTALL=0
 SOURCE=""
@@ -40,7 +41,7 @@ if [ "$UNINSTALL" = 1 ]; then
     uv tool uninstall olla-jev >/dev/null 2>&1 && say "removed the olla-jev command" || say "olla-jev was not installed"
   fi
   say "kept your config and downloaded models; delete them by hand if you want the space back:"
-  echo "    config  macOS ~/Library/Application Support/olla-jev   Linux ~/.config/olla-jev"
+  echo "    config  ~/.olla-jev"
   echo "    models  ~/.cache/huggingface/hub (shared with other Hugging Face tools)"
   exit 0
 fi

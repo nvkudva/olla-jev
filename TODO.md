@@ -19,7 +19,7 @@
 - [x] Model name resolver (Ollama style): repo, repo:quant case-insensitive, repo:filename, optional hf.co/ prefix, default Q4_K_M; pinned SHA per name
 - [x] Ollama-style admin API: /api/tags, /api/ps, /api/pull, /api/show, /api/delete
 - [x] CLI client commands: serve, run, pull, list, ps, show, rm, stop, cp
-- [x] FREEJEV_* environment variables
+- [x] OLLAJEV_* environment variables (named FREEJEV_* until the rename)
 - [x] Demo: model picker from /v1/models, per-model limit hints, model-agnostic presets
 - [x] Interactive `run`: state prompt plus question builder in the terminal
 - [x] Output normalisation: TypeSafe confidence formulas, legend, action, usage for every adapter
@@ -43,7 +43,7 @@
 - [ ] Julia-1 on MPS: its runtime leaves inputs on CPU; runs on CPU for now
 - [ ] Byte-level progress in /api/pull stream (now status lines only)
 - [x] Rename project to olla-jev with src layout
-- [x] OS data folders via platformdirs; logs out of the working directory
+- [x] Config and logs in ~/.olla-jev (OS folders via platformdirs until 0.2); logs out of the working directory
 - [x] Packaging metadata, PEP 735 dev group, ruff, pyright, pre-commit
 - [x] `olla-jev service` (launchd, systemd user unit)
 - [x] install.sh / install.ps1 with --service and --uninstall; tested locally on macOS

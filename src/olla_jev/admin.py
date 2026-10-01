@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import queue
 import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -18,7 +20,10 @@ from .catalog import CATALOG
 from .manager import canonical, lookup
 from .names import quant_of
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
+_pulling: set[str] = set()
+_pulling_guard = threading.Lock()
 DESCRIPTIONS = {e.name: e.description for e in CATALOG}
 
 
@@ -29,22 +34,11 @@ class ModelRef(BaseModel):
 class PullRequest(BaseModel):
     model: str
     stream: bool = True
-    trust: bool = False
 
 
 class CopyRequest(BaseModel):
     source: str
     destination: str
-
-
-def _snapshot_dir(repo_id: str, revision: str) -> Path | None:
-    info = store.scan_cache_dir(config.models_dir())
-    for repo in info.repos if info else ():
-        if repo.repo_id == repo_id:
-            for rev in repo.revisions:
-                if rev.commit_hash == revision:
-                    return Path(rev.snapshot_path)
-    return None
 
 
 def _describe(name: str, r: store.Resolved, size: int, modified: float) -> dict[str, Any]:
@@ -71,9 +65,10 @@ def tags() -> list[dict[str, Any]]:
     out = []
     for repo_id, (size, modified) in sorted(store.downloaded().items()):
         revision = store.pins()[repo_id]
-        snap = _snapshot_dir(repo_id, revision)
-        if snap is None:
+        rev = store.snapshot(repo_id, revision)
+        if rev is None:
             continue
+        snap = Path(rev.snapshot_path)
         ggufs = sorted(p.name for p in snap.glob("**/*.gguf"))
         names = [f"{repo_id}:{quant_of(g) or g}" for g in ggufs] or [repo_id]
         for name in names:
@@ -95,7 +90,7 @@ def api_tags() -> dict[str, Any]:
 def api_ps() -> dict[str, Any]:
     from . import api
 
-    now = __import__("time").monotonic()
+    now = time.monotonic()
     models = []
     for slot in api.current_manager().loaded():
         expires = (
@@ -141,19 +136,27 @@ def api_pull(req: PullRequest) -> Any:
     events: queue.Queue[dict[str, Any] | None] = queue.Queue()
 
     def work() -> None:
+        key = None
         try:
             events.put({"status": "pulling manifest"})
             r = store.resolve(lookup(req.model))
             if r.family.runs_repo_code and not store.is_trusted(r):
-                if not req.trust:
-                    events.put(
-                        {
-                            "error": f"{canonical(r)} runs Python code from its repo; pull again with trust=true "
-                            f"after reviewing https://huggingface.co/{r.repo_id}/tree/{r.revision}"
-                        }
-                    )
-                    return
-                store.trust(r)
+                events.put(
+                    {
+                        "error": f"{canonical(r)} runs Python code from its repo; trust is not available over HTTP. "
+                        f"Review https://huggingface.co/{r.repo_id}/tree/{r.revision}, then run: "
+                        f"olla-jev pull {canonical(r)} --trust"
+                    }
+                )
+                return
+            key = r.repo_id
+            with _pulling_guard:
+                busy = key in _pulling
+                _pulling.add(key)
+            if busy:
+                key = None
+                events.put({"error": f"{r.repo_id} is already being pulled"})
+                return
             events.put({"status": f"downloading {r.repo_id}@{r.revision[:12]}", "digest": r.revision})
             store.download(r)
             prefetch = getattr(r.family, "prefetch", None)
@@ -161,9 +164,15 @@ def api_pull(req: PullRequest) -> Any:
                 events.put({"status": "downloading base model"})
                 prefetch(store.local_path(r))
             events.put({"status": "success", "model": canonical(r)})
-        except Exception as exc:  # reported to the client as an error line
+        except (LookupError, ValueError) as exc:  # bad name or unknown model: safe to show
             events.put({"error": str(exc)})
+        except Exception:
+            log.exception("pull of %s failed", req.model)
+            events.put({"error": "pull failed; see the server log"})
         finally:
+            if key:
+                with _pulling_guard:
+                    _pulling.discard(key)
             events.put(None)
 
     threading.Thread(target=work, daemon=True).start()
@@ -182,10 +191,9 @@ def api_pull(req: PullRequest) -> Any:
 def api_delete(req: ModelRef) -> Any:
     from . import api
 
-    aliases = config.load().get("aliases", {})
-    if req.model in aliases:
-        aliases.pop(req.model)
-        config.update(aliases=aliases)
+    with config.edit() as data:
+        removed = data.get("aliases", {}).pop(req.model, None)
+    if removed is not None:
         return {"status": "success"}
     try:
         r = store.resolve(lookup(req.model), online=False)
@@ -194,21 +202,16 @@ def api_delete(req: ModelRef) -> Any:
     api.current_manager().unload(canonical(r))
     path, gguf = store.local_path(r), r.gguf
     others = [p for p in Path(path).glob("**/*.gguf") if p.name != Path(gguf).name] if gguf and path else []
-    if gguf and path and others:  # other quants of this repo stay; remove only this file and its blob
-        link = Path(path) / gguf
-        blob = link.resolve()
-        freed = blob.stat().st_size
-        link.unlink()
-        blob.unlink()
-        return {"status": "success", "freed": freed}
+    if others:  # other quants of this repo stay; remove only this file
+        return {"status": "success", "freed": store.delete_file(r)}
     return {"status": "success", "freed": store.delete(r.repo_id)}
 
 
 @router.post("/copy")
 def api_copy(req: CopyRequest) -> Any:
-    aliases = config.load().get("aliases", {})
-    aliases[req.destination] = lookup(req.source)
-    config.update(aliases=aliases)
+    target = lookup(req.source)
+    with config.edit() as data:
+        data.setdefault("aliases", {})[req.destination] = target
     return {"status": "success"}
 
 

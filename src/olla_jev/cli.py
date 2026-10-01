@@ -35,11 +35,16 @@ def server_url() -> str:
     return config.load().get("server_url") or f"http://127.0.0.1:{config.DEFAULT_PORT}"
 
 
+def auth_headers() -> dict[str, str]:
+    headers = {"content-type": "application/json"}
+    if key := config.api_key():
+        headers["authorization"] = f"Bearer {key}"
+    return headers
+
+
 def call(method: str, path: str, body: dict[str, Any] | None = None, timeout: float = 600) -> Any:
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(
-        server_url() + path, data=data, method=method, headers={"content-type": "application/json"}
-    )
+    req = urllib.request.Request(server_url() + path, data=data, method=method, headers=auth_headers())
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read() or b"null")
@@ -148,20 +153,18 @@ def cmd_rm(args: argparse.Namespace) -> None:
         if server_running():
             call("DELETE", "/api/delete", {"model": name})
         else:
-            aliases = config.load().get("aliases", {})
-            if name in aliases:
-                aliases.pop(name)
-                config.update(aliases=aliases)
-            else:
+            with config.edit() as data:
+                removed = data.get("aliases", {}).pop(name, None)
+            if removed is None:
                 r = store.resolve(lookup(name), online=False)
                 store.delete(r.repo_id)
         print(f"deleted '{name}'")
 
 
 def cmd_cp(args: argparse.Namespace) -> None:
-    aliases = config.load().get("aliases", {})
-    aliases[args.destination] = lookup(args.source)
-    config.update(aliases=aliases)
+    target = lookup(args.source)
+    with config.edit() as data:
+        data.setdefault("aliases", {})[args.destination] = target
     print(f"copied '{args.source}' to '{args.destination}'")
 
 
@@ -239,11 +242,20 @@ def cmd_serve(args: argparse.Namespace) -> None:
         if not setup():
             return
     data = config.load()
+    for check in (config.keep_alive, config.max_loaded_models, config.max_body_bytes):
+        check()  # fail on a bad value now, not on a request
     env_host, env_port = config.host()
     host = args.host or data.get("host") or env_host
     explicit = args.port is not None or bool(os.environ.get("OLLAJEV_HOST"))
     port = args.port or (env_port if os.environ.get("OLLAJEV_HOST") else data.get("port") or env_port)
     model = args.model or default_model()
+
+    if not config.is_loopback(host) and not config.api_key():
+        raise SystemExit(
+            f"refusing to listen on {host}: the API can download, delete and load models, so it needs a key. "
+            "Set OLLAJEV_API_KEY, or bind to 127.0.0.1."
+        )
+    api.allowed_hosts = frozenset({"localhost", "127.0.0.1", "[::1]", host}) if config.is_loopback(host) else None
 
     args.log_file = args.log_file or str(config.log_dir() / "server.log")
     configure_logging(args.log_file)
@@ -285,7 +297,7 @@ def banner(base: str, model: str | None, log_file: str) -> str:
             "",
             "    For the TypeSafe SDK:",
             f"      export TYPESAFE_BASE_URL={base}",
-            "      export TYPESAFE_API_KEY=local",
+            "      export TYPESAFE_API_KEY=" + ("$OLLAJEV_API_KEY" if config.api_key() else "local"),
             "",
             f"    Logging to {log_file}. Ctrl-C to stop.",
             "",

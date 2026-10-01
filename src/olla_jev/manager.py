@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import gc
 import logging
 import threading
@@ -57,6 +58,7 @@ class Slot:
     expires: float = 0.0  # monotonic deadline; inf = never
     pinned: bool = False  # the model `serve` preloaded stays until the server stops
     loaded_at: float = field(default_factory=time.time)
+    closed: bool = False  # set under `lock` by unload; a request that sees it asks the manager again
 
 
 class Manager:
@@ -96,8 +98,12 @@ class Manager:
         path = store.local_path(r)
         if path is None:
             raise NotDownloaded(f"{key} is not downloaded; run: olla-jev pull {key}")
-        while len(self._slots) >= max(1, config.max_loaded_models()):
-            self.unload(min(self._slots.values(), key=lambda s: s.expires).name)
+        while True:
+            with self._guard:
+                if len(self._slots) < max(1, config.max_loaded_models()):
+                    break
+                victim = min(self._slots.values(), key=lambda s: s.expires).name
+            self.unload(victim)
         device = pick_device(config.device())
         log.info("loading %s on %s", key, device)
         started = time.monotonic()
@@ -124,6 +130,7 @@ class Manager:
         if slot is None:
             return False
         with slot.lock:  # let a running request finish
+            slot.closed = True
             close = getattr(slot.adapter, "close", None)
             if close:
                 close()
@@ -152,12 +159,16 @@ class Manager:
     def run(
         self, name: str | None, state: Any, questions: dict[str, dict[str, Any]], keep_alive: float | None = None
     ) -> tuple[Slot, dict[str, Any]]:
-        slot = self.get(name, keep_alive)
-        check_limits(slot.adapter.limits, questions)
-        # One forward pass per model at a time: on MPS concurrent forwards abort the process with a
-        # Metal command-buffer assertion, and several adapters keep per-call state.
-        with slot.lock:
-            result = slot.adapter.system_one(state, questions)
+        while True:
+            slot = self.get(name, keep_alive)
+            check_limits(slot.adapter.limits, questions)
+            # One forward pass per model at a time: on MPS concurrent forwards abort the process with a
+            # Metal command-buffer assertion, and several adapters keep per-call state.
+            with slot.lock:
+                if slot.closed:  # unloaded between get and here: load it again
+                    continue
+                result = slot.adapter.system_one(state, questions)
+            break
         self._touch(slot, keep_alive)
         return slot, result
 
@@ -175,12 +186,10 @@ def check_limits(limits: dict[str, Any], questions: dict[str, dict[str, Any]]) -
 
 
 def _empty_device_cache() -> None:
-    try:
+    with contextlib.suppress(Exception):  # cache release is best effort
         import torch
 
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         elif torch.backends.mps.is_available():
             torch.mps.empty_cache()
-    except Exception:  # cache release is best effort
-        pass

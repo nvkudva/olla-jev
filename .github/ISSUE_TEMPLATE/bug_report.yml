@@ -1,0 +1,40 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: For security problems, do not file here. Use a private security advisory (see SECURITY.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands or requests. Include the model repo (for example SupersonicLabs/Julia-1).
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: olla-jev version
+      description: Output of `olla-jev --version`
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: OS, Python and hardware
+      placeholder: macOS 15, Python 3.12, Apple M3
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or traceback
+      render: text

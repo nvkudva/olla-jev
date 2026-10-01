@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -22,7 +22,7 @@ def _downloaded() -> set[str]:
 class Setup(App[dict[str, Any] | None]):
     TITLE = "olla-jev setup"
     SUB_TITLE = "System One decision models from Hugging Face"
-    BINDINGS = [("escape", "quit_setup", "Quit")]
+    BINDINGS: ClassVar = [("escape", "quit_setup", "Quit")]
     CSS = """
     #models { height: 1fr; border: round $primary; }
     #paste { display: none; }

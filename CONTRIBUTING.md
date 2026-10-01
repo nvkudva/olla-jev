@@ -48,7 +48,34 @@ protocol in `adapters/__init__.py` (`matches`, `allow_patterns`, `limits`, `load
 in `families()`. Set `runs_repo_code = True` if it imports Python from the model repo. Run the new
 model end to end through `/v1/systemone` before adding it to `catalog.py`.
 
+## Running tests
+
+```sh
+uv run pytest
+```
+
+## Lint and type check
+
+```sh
+uv run ruff check
+uv run pyright
+```
+
+## Releasing
+
+1. Bump `version` in `pyproject.toml`.
+2. Move the `[Unreleased]` entries in `CHANGELOG.md` under the new version.
+3. Commit, then tag `vX.Y.Z` and push the tag.
+
+`.github/workflows/release.yml` checks the tag matches `pyproject.toml`, builds, publishes to PyPI
+with trusted publishing, and creates the GitHub release.
+
 ## Commits
 
 Use [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:` …) and
 add a line to `CHANGELOG.md` under `[Unreleased]` for user-visible changes.
+
+## License
+
+Contributions are made under the Apache-2.0 license, the same as the project. There is no CLA.
+Add a `Signed-off-by` line (`git commit -s`) if you like; it is not required.

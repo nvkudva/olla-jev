@@ -67,10 +67,10 @@ def test_olla_jev_home_overrides_config_and_logs(tmp_path, monkeypatch):
     assert config.log_dir() == tmp_path / "logs"
 
 
-def test_default_config_dir_is_the_os_folder(monkeypatch):
+def test_default_config_dir_is_dot_olla_jev(monkeypatch):
     monkeypatch.delenv("OLLAJEV_HOME", raising=False)
-    assert config.config_dir().name == "olla-jev"
-    assert Path.home() in config.config_dir().parents
+    assert config.config_dir() == Path.home() / ".olla-jev"
+    assert config.log_dir() == Path.home() / ".olla-jev" / "logs"
 
 
 @pytest.mark.parametrize(
