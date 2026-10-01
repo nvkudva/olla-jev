@@ -1,6 +1,6 @@
 - [x] Inspect bundled inference code of Julia-1, open-jev-deberta, decider-4b, kev-4b; record predict entry points
 - [x] Scaffold project from laya-server (pyproject, uv, start.sh, start.ps1, server package)
-- [ ] Port wire schema and `/v1/models`, `/v1/systemone` from laya-server
+- [x] Port wire schema and `/v1/models`, `/v1/systemone` from laya-server
 - [ ] Define adapter interface and registry with family detection
 - [ ] Implement `laya` adapter
 - [ ] Implement `bundled-package` adapter for Julia-1
