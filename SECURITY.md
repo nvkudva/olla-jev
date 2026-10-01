@@ -6,7 +6,7 @@ Only the latest 0.x release receives security fixes.
 
 ## Reporting a vulnerability
 
-Report privately through a [GitHub security advisory](https://github.com/nvkudva/olla-jev/security/advisories/new). Do not open a public issue or pull request. Include the version, how to reproduce, and the impact.
+Report privately through a [GitHub security advisory](https://github.com/nvkudva/ollajev/security/advisories/new). Do not open a public issue or pull request. Include the version, how to reproduce, and the impact.
 
 Expect an acknowledgement within 7 days and a status update within 30 days. This is a volunteer project, so these are goals, not guarantees. Fixes are released as a new 0.x version and credited in the advisory unless you prefer otherwise.
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from olla_jev import cli, config, service
+from ollajev import cli, config, service
 
 
 @pytest.mark.parametrize(
@@ -39,38 +39,38 @@ def test_unknown_service_action_is_a_usage_error():
 def test_version_flag(capsys):
     with pytest.raises(SystemExit):
         cli.build_parser().parse_args(["--version"])
-    assert capsys.readouterr().out.startswith("olla-jev ")
+    assert capsys.readouterr().out.startswith("ollajev ")
 
 
 def test_launchd_plist_is_valid_and_runs_serve(tmp_path):
-    data = plistlib.loads(service.plist("/opt/bin/olla-jev", tmp_path).encode())
+    data = plistlib.loads(service.plist("/opt/bin/ollajev", tmp_path).encode())
     assert data["Label"] == service.LABEL
-    assert data["ProgramArguments"] == ["/opt/bin/olla-jev", "serve", "--no-browser"]
+    assert data["ProgramArguments"] == ["/opt/bin/ollajev", "serve", "--no-browser"]
     assert data["RunAtLoad"] and data["KeepAlive"]
     assert data["StandardErrorPath"] == str(tmp_path / "service.err.log")
 
 
 def test_plist_escapes_paths(tmp_path):
-    data = plistlib.loads(service.plist("/Users/a&b/olla-jev", tmp_path).encode())
-    assert data["ProgramArguments"][0] == "/Users/a&b/olla-jev"
+    data = plistlib.loads(service.plist("/Users/a&b/ollajev", tmp_path).encode())
+    assert data["ProgramArguments"][0] == "/Users/a&b/ollajev"
 
 
 def test_systemd_unit_quotes_the_executable():
-    text = service.unit("/home/me/my tools/olla-jev")
-    assert 'ExecStart="/home/me/my tools/olla-jev" serve --no-browser' in text
+    text = service.unit("/home/me/my tools/ollajev")
+    assert 'ExecStart="/home/me/my tools/ollajev" serve --no-browser' in text
     assert "WantedBy=default.target" in text
 
 
-def test_olla_jev_home_overrides_config_and_logs(tmp_path, monkeypatch):
+def test_ollajev_home_overrides_config_and_logs(tmp_path, monkeypatch):
     monkeypatch.setenv("OLLAJEV_HOME", str(tmp_path))
     assert config.config_path() == tmp_path / "config.json"
     assert config.log_dir() == tmp_path / "logs"
 
 
-def test_default_config_dir_is_dot_olla_jev(monkeypatch):
+def test_default_config_dir_is_dot_ollajev(monkeypatch):
     monkeypatch.delenv("OLLAJEV_HOME", raising=False)
-    assert config.config_dir() == Path.home() / ".olla-jev"
-    assert config.log_dir() == Path.home() / ".olla-jev" / "logs"
+    assert config.config_dir() == Path.home() / ".ollajev"
+    assert config.log_dir() == Path.home() / ".ollajev" / "logs"
 
 
 @pytest.mark.parametrize(
@@ -83,7 +83,7 @@ def test_default_config_dir_is_dot_olla_jev(monkeypatch):
         ("[::1]:9000", ("::1", 9000)),
     ],
 )
-def test_olla_jev_host(monkeypatch, value, expected):
+def test_ollajev_host(monkeypatch, value, expected):
     monkeypatch.setenv("OLLAJEV_HOST", value)
     assert config.host() == expected
 

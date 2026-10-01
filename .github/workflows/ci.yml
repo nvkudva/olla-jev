@@ -57,7 +57,7 @@ jobs:
         run: |
           uv venv "$RUNNER_TEMP/smoke"
           uv pip install --python "$RUNNER_TEMP/smoke/bin/python" dist/*.whl
-          "$RUNNER_TEMP/smoke/bin/olla-jev" --version
+          "$RUNNER_TEMP/smoke/bin/ollajev" --version
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: dist

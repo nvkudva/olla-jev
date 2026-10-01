@@ -7,8 +7,8 @@ import asyncio
 import pytest
 from textual.widgets import DataTable
 
-from olla_jev import cli, tui
-from olla_jev.catalog import CATALOG
+from ollajev import cli, tui
+from ollajev.catalog import CATALOG
 
 
 @pytest.fixture

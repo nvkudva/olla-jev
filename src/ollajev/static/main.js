@@ -47,7 +47,7 @@ function mount(host, markup) {
 
 // ---- theme ---------------------------------------------------------------
 
-let theme = store.get("olla-jev.theme", "system");
+let theme = store.get("ollajev.theme", "system");
 function applyTheme() {
   if (theme === "system") document.documentElement.removeAttribute("data-theme");
   else document.documentElement.setAttribute("data-theme", theme);
@@ -55,7 +55,7 @@ function applyTheme() {
 }
 $("#theme").onclick = () => {
   theme = theme === "dark" ? "light" : theme === "light" ? "system" : "dark";
-  store.set("olla-jev.theme", theme);
+  store.set("ollajev.theme", theme);
   applyTheme();
 };
 applyTheme();
@@ -72,14 +72,14 @@ const DEFAULT_SET = [
   { name: "is_frustrated", type: "noul", instructions: "Does the customer sound frustrated?", criteria: [] },
 ];
 
-let questions = store.get("olla-jev.questions", DEFAULT_SET);
-const save = () => store.set("olla-jev.questions", questions);
+let questions = store.get("ollajev.questions", DEFAULT_SET);
+const save = () => store.set("ollajev.questions", questions);
 
 const modelSel = $("#model");
 let limits = {};
 const currentModel = () => modelSel.value || "jev-latest";
 const stateBox = $("#state");
-stateBox.value = store.get("olla-jev.state", "");
+stateBox.value = store.get("ollajev.state", "");
 
 const qJsonHost = $("#q-json");
 const requestError = $("#request-error");
@@ -216,7 +216,7 @@ function setField(path, value) {
 /** Load a named example: its sample state into the textarea, its questions into the editor. */
 function adoptExample(example) {
   stateBox.value = example.state;
-  store.set("olla-jev.state", example.state);
+  store.set("ollajev.state", example.state);
   syncSend();
   // adoptPreset re-renders, which refreshes the JSON pane from the new state when it is showing.
   adoptPreset(example.questions);
@@ -230,7 +230,7 @@ function adoptPreset(set) {
       : q.type === "score" ? q.criteria.slice()
       : [q.criteria?.true ?? "", q.criteria?.false ?? ""],
   }));
-  store.set("olla-jev.questions", questions);
+  store.set("ollajev.questions", questions);
   paintEditor();
 }
 
@@ -247,7 +247,7 @@ function applyJsonView() {
       throw new Error("the request needs a `questions` object.");
     }
     stateBox.value = body.state;
-    store.set("olla-jev.state", body.state);
+    store.set("ollajev.state", body.state);
     syncSend();
     adoptPreset(body.questions);
     return true;
@@ -385,7 +385,7 @@ function errorMarkup(detail) {
 const log = $("#log");
 /* Turns saved before the sidebar became a whole request carry `state`/`sent` instead of
    `request`; re-key them so an existing log still renders. */
-let history = store.get("olla-jev.history", []).map((turn) => turn.request ? turn : {
+let history = store.get("ollajev.history", []).map((turn) => turn.request ? turn : {
   request: { state: turn.state ?? "", model: currentModel(), questions: turn.sent ?? {} },
   data: turn.data,
   error: turn.error,
@@ -503,7 +503,7 @@ async function ask(request) {
   }
   pending.remove();
   history.push(turn);
-  store.set("olla-jev.history", history.slice(-30));
+  store.set("ollajev.history", history.slice(-30));
   openIndex = history.length - 1;
   const appended = node(turnMarkup(turn, openIndex));
   log.append(appended);
@@ -551,10 +551,10 @@ const addQuestion = (type) => {
 $("#add-noul").onclick = () => addQuestion("noul");
 $("#add-choice").onclick = () => addQuestion("choice");
 $("#add-score").onclick = () => addQuestion("score");
-$("#clear-log").onclick = () => { history = []; store.set("olla-jev.history", history); renderLog(); };
+$("#clear-log").onclick = () => { history = []; store.set("ollajev.history", history); renderLog(); };
 
 $("#send").onclick = sendRequest;
-stateBox.addEventListener("input", () => { store.set("olla-jev.state", stateBox.value); syncSend(); });
+stateBox.addEventListener("input", () => { store.set("ollajev.state", stateBox.value); syncSend(); });
 stateBox.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) sendRequest();
 });
@@ -586,20 +586,20 @@ let models = [];
 fetch("/v1/models").then((r) => r.json()).then((body) => {
   models = body.models ?? [];
   for (const m of models) modelSel.append(node(html`<option value="${m.name}">${m.name}${m.default ? " (default)" : ""}</option>`));
-  const saved = store.get("olla-jev.model", "");
+  const saved = store.get("ollajev.model", "");
   if (models.some((m) => m.name === saved)) modelSel.value = saved;
   showModel();
 }).catch(() => {});
-modelSel.onchange = () => { store.set("olla-jev.model", modelSel.value); showModel(); };
+modelSel.onchange = () => { store.set("ollajev.model", modelSel.value); showModel(); };
 
 fetch("/ui/presets").then((r) => r.json()).then((presets) => {
   const sel = $("#preset");
   for (const name of Object.keys(presets)) sel.append(node(html`<option value="${name}">${name}</option>`));
   sel.onchange = () => { if (sel.value) adoptExample(presets[sel.value]); sel.value = ""; };
   // The first visit only opens on the triage example, overwriting whatever the last session left.
-  if (!store.get("olla-jev.visited")) {
+  if (!store.get("ollajev.visited")) {
     adoptExample(presets.triage);
-    store.set("olla-jev.visited", true);
+    store.set("ollajev.visited", true);
   }
 }).catch(() => {});
 

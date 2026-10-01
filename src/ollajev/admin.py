@@ -145,7 +145,7 @@ def api_pull(req: PullRequest) -> Any:
                     {
                         "error": f"{canonical(r)} runs Python code from its repo; trust is not available over HTTP. "
                         f"Review https://huggingface.co/{r.repo_id}/tree/{r.revision}, then run: "
-                        f"olla-jev pull {canonical(r)} --trust"
+                        f"ollajev pull {canonical(r)} --trust"
                     }
                 )
                 return

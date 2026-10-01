@@ -60,7 +60,7 @@ representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement by opening a
-[private security advisory](https://github.com/nvkudva/olla-jev/security/advisories/new)
+[private security advisory](https://github.com/nvkudva/ollajev/security/advisories/new)
 on the repository, or by contacting the maintainer through the repository. All
 complaints will be reviewed and investigated promptly and fairly.
 

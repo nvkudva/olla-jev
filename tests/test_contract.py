@@ -11,9 +11,9 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from olla_jev import api, normalize
-from olla_jev.manager import NotDownloaded, NotTrusted, check_limits
-from olla_jev.names import parse, pick_gguf
+from ollajev import api, normalize
+from ollajev.manager import NotDownloaded, NotTrusted, check_limits
+from ollajev.names import parse, pick_gguf
 
 NOUL = {"type": "noul", "noul": 0.9, "x_extra": 1}
 

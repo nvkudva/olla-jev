@@ -42,18 +42,18 @@
 - [ ] Investigate Decision-1.0 Kai near-uniform score distributions
 - [ ] Julia-1 on MPS: its runtime leaves inputs on CPU; runs on CPU for now
 - [ ] Byte-level progress in /api/pull stream (now status lines only)
-- [x] Rename project to olla-jev with src layout
-- [x] Config and logs in ~/.olla-jev (OS folders via platformdirs until 0.2); logs out of the working directory
+- [x] Rename project to ollajev with src layout
+- [x] Config and logs in ~/.ollajev (OS folders via platformdirs until 0.2); logs out of the working directory
 - [x] Packaging metadata, PEP 735 dev group, ruff, pyright, pre-commit
-- [x] `olla-jev service` (launchd, systemd user unit)
+- [x] `ollajev service` (launchd, systemd user unit)
 - [x] install.sh / install.ps1 with --service and --uninstall; tested locally on macOS
 - [x] CHANGELOG, CONTRIBUTING, NOTICE, CI workflow
-- [x] Create GitHub repo nvkudva/olla-jev and push (needs user go-ahead)
+- [x] Create GitHub repo nvkudva/ollajev and push (needs user go-ahead)
 - [ ] Test install.ps1 on Windows (piped install.sh tested on macOS)
 - [x] Verify CI on GitHub runners (llama-cpp-python builds from source on Linux and Windows)
 - [ ] PyPI release with trusted publishing on a version tag
 - [ ] Shell completion (optional)
-- [ ] Rename the local project folder from free-jev-server to olla-jev
-- [ ] Homebrew: tap repo nvkudva/homebrew-tap with Formula/olla-jev.rb (depends_on uv, venv in libexec pinned to the PyPI version, service block running `olla-jev serve --no-browser`, test block `olla-jev --version`); needs the PyPI release first
+- [ ] Rename the local project folder from free-jev-server to ollajev
+- [ ] Homebrew: tap repo nvkudva/homebrew-tap with Formula/ollajev.rb (depends_on uv, venv in libexec pinned to the PyPI version, service block running `ollajev serve --no-browser`, test block `ollajev --version`); needs the PyPI release first
 - [ ] Homebrew: GitHub Action to bump formula version and sha256 on each PyPI release
-- [ ] Homebrew: README "Install with Homebrew" section (`brew install nvkudva/tap/olla-jev`, `brew services start olla-jev`; do not combine with `olla-jev service install`)
+- [ ] Homebrew: README "Install with Homebrew" section (`brew install nvkudva/tap/ollajev`, `brew services start ollajev`; do not combine with `ollajev service install`)

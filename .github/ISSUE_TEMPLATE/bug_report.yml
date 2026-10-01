@@ -22,8 +22,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: olla-jev version
-      description: Output of `olla-jev --version`
+      label: ollajev version
+      description: Output of `ollajev --version`
     validations:
       required: true
   - type: input

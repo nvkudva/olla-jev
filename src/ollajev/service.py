@@ -11,13 +11,13 @@ from xml.sax.saxutils import escape
 
 from . import config
 
-LABEL = "com.olla-jev.server"
-UNIT = "olla-jev.service"
+LABEL = "com.ollajev.server"
+UNIT = "ollajev.service"
 
 
 def executable() -> str:
-    """The installed `olla-jev` command, so the service survives the shell that installed it."""
-    found = shutil.which("olla-jev")
+    """The installed `ollajev` command, so the service survives the shell that installed it."""
+    found = shutil.which("ollajev")
     if found:
         return str(Path(found).resolve())
     return str(Path(sys.argv[0]).resolve())
@@ -49,7 +49,7 @@ def plist(exe: str, log_dir: Path) -> str:
 
 def unit(exe: str) -> str:
     return f"""[Unit]
-Description=olla-jev System One decision model server
+Description=ollajev System One decision model server
 After=network-online.target
 
 [Service]
@@ -76,7 +76,7 @@ def _run(*cmd: str, check: bool = True) -> subprocess.CompletedProcess[str]:
 
 def _unsupported() -> SystemExit:
     return SystemExit(
-        "background service is supported on macOS (launchd) and Linux (systemd); on Windows run: olla-jev serve"
+        "background service is supported on macOS (launchd) and Linux (systemd); on Windows run: ollajev serve"
     )
 
 
@@ -94,7 +94,7 @@ def install() -> str:
         return f"installed {path}; the server starts now and at every login"
     if sys.platform.startswith("linux"):
         if not shutil.which("systemctl"):
-            raise SystemExit("systemctl not found; run `olla-jev serve` under your own supervisor instead")
+            raise SystemExit("systemctl not found; run `ollajev serve` under your own supervisor instead")
         path = _unit_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(unit(exe))

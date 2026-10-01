@@ -1,4 +1,4 @@
-# olla-jev
+# ollajev
 
 > **Run Jev-style decision models on your machine.** Pull a System One model from Hugging Face and
 > call it through the same `/v1/systemone` API as TypeSafe's hosted Jev.
@@ -16,27 +16,27 @@ A local server that runs **System One decision models** from Hugging Face behind
 - Pick a model with the request's `model` field. Models load on first use and unload when idle.
 - One command line to manage models: `serve`, `setup`, `run`, `pull`, `list`, `ps`, `show`, `rm`, `stop`, `cp`, `service` (see [Commands](#commands)).
 
-olla-jev is an independent project. It is not affiliated with or endorsed by Ollama or TypeSafe.
+ollajev is an independent project. It is not affiliated with or endorsed by Ollama or TypeSafe.
 
 ## Install
 
 macOS and Linux:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/nvkudva/olla-jev/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/nvkudva/ollajev/main/install.sh | sh
 ```
 
 Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/nvkudva/olla-jev/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/nvkudva/ollajev/main/install.ps1 | iex
 ```
 
-- The script installs [uv](https://docs.astral.sh/uv/) if it is missing, then installs `olla-jev`
+- The script installs [uv](https://docs.astral.sh/uv/) if it is missing, then installs `ollajev`
   as a command in its own Python 3.12 environment (`uv tool install`).
 - Add `--service` (`… | sh -s -- --service`) to also run the server in the background at every
   login: a launchd agent on macOS, a systemd user unit on Linux.
-- Already have uv? `uv tool install git+https://github.com/nvkudva/olla-jev` does the same.
+- Already have uv? `uv tool install git+https://github.com/nvkudva/ollajev` does the same.
 - To remove it, see [Uninstall](#uninstall).
 
 ## Uninstall
@@ -44,37 +44,37 @@ irm https://raw.githubusercontent.com/nvkudva/olla-jev/main/install.ps1 | iex
 macOS and Linux:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/nvkudva/olla-jev/main/install.sh | sh -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/nvkudva/ollajev/main/install.sh | sh -s -- --uninstall
 ```
 
 Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/nvkudva/olla-jev/main/install.ps1 -OutFile install.ps1
+irm https://raw.githubusercontent.com/nvkudva/ollajev/main/install.ps1 -OutFile install.ps1
 .\install.ps1 -Uninstall
 ```
 
-- This stops and removes the background service, if installed, and removes the `olla-jev` command.
-- Installed with uv directly? Run `olla-jev service uninstall`, then `uv tool uninstall olla-jev`.
+- This stops and removes the background service, if installed, and removes the `ollajev` command.
+- Installed with uv directly? Run `ollajev service uninstall`, then `uv tool uninstall ollajev`.
 - Your config, logs and downloaded models are kept. To remove them too, delete these folders:
 
 | | Path |
 |---|---|
-| Config and logs | `~/.olla-jev` |
+| Config and logs | `~/.ollajev` |
 | Models | `~/.cache/huggingface/hub/models--<user>--<repo>` |
 
 The models folder is the shared Hugging Face cache, which other tools use too. Delete only the
-`models--…` folders of the models you pulled (`olla-jev list` shows them), or run `olla-jev rm <model>`
+`models--…` folders of the models you pulled (`ollajev list` shows them), or run `ollajev rm <model>`
 for each one before uninstalling.
 
 ## Quick start
 
 ```sh
-olla-jev            # first run: opens the model manager; pick a model, press Enter, then s to serve
-olla-jev run        # in another terminal: ask the model questions
+ollajev            # first run: opens the model manager; pick a model, press Enter, then s to serve
+ollajev run        # in another terminal: ask the model questions
 ```
 
-- The model manager lists the curated models, all under 4 GB. Run `olla-jev setup` (or `olla-jev tui`)
+- The model manager lists the curated models, all under 4 GB. Run `ollajev setup` (or `ollajev tui`)
   to open it again.
 - The demo page opens at <http://127.0.0.1:8000/demo>.
 
@@ -135,14 +135,14 @@ The model manager lists these, all under 4 GB:
 
 Any other repo works when it belongs to one of these families (decider, laya, julia, open-jev, kev,
 intern-decision, decision1), for example a fine-tune or a bigger size. Requests over a model's
-limits get a 422 before the model runs. `olla-jev show <model>` prints them.
+limits get a 422 before the model runs. `ollajev show <model>` prints them.
 
 ### Download, switch and remove models
 
 ```sh
-olla-jev list                                  # what is downloaded; * marks the default
-olla-jev pull SupersonicLabs/Julia-1           # download a model (any name from the table)
-olla-jev pull Mapika/decider-2b-GGUF:Q8_0      # download one quantized file
+ollajev list                                  # what is downloaded; * marks the default
+ollajev pull SupersonicLabs/Julia-1           # download a model (any name from the table)
+ollajev pull Mapika/decider-2b-GGUF:Q8_0      # download one quantized file
 ```
 
 To use a different model:
@@ -150,12 +150,12 @@ To use a different model:
 | You want | Do this |
 |---|---|
 | Another model for one request | send `"model": "<name>"` in the `/v1/systemone` body; it loads on first use |
-| Another default model | `olla-jev setup`, move to a model, press Enter (it downloads if needed and becomes the default), then `s` to serve. A server that is already running picks up the saved default for requests that omit `model` |
-| Serve a model once, without changing the default | `olla-jev serve <name>` |
-| Ask a model from the terminal | `olla-jev run <name>` |
-| A short name for a long one | `olla-jev cp <name> julia`, then send `"model": "julia"` |
-| Free memory now | `olla-jev stop <name>` (idle models also unload after `OLLAJEV_KEEP_ALIVE`) |
-| Free disk space | `olla-jev rm <name>` |
+| Another default model | `ollajev setup`, move to a model, press Enter (it downloads if needed and becomes the default), then `s` to serve. A server that is already running picks up the saved default for requests that omit `model` |
+| Serve a model once, without changing the default | `ollajev serve <name>` |
+| Ask a model from the terminal | `ollajev run <name>` |
+| A short name for a long one | `ollajev cp <name> julia`, then send `"model": "julia"` |
+| Free memory now | `ollajev stop <name>` (idle models also unload after `OLLAJEV_KEEP_ALIVE`) |
+| Free disk space | `ollajev rm <name>` |
 
 A model must be downloaded before a request can use it; requests never download. Only
 `OLLAJEV_MAX_LOADED_MODELS` models (default 1) stay in memory, so asking for a second model unloads the
@@ -168,7 +168,7 @@ your user's privileges. The first `pull` of such a repo shows the commit and its
 asks you to trust that exact commit (`--trust` skips the question). Every repo is pinned to the
 commit of its first download and never updates by itself.
 
-kev's loader is vendored from GitHub at a pinned commit (`olla_jev/_vendor/kev`), and its `head.pt`
+kev's loader is vendored from GitHub at a pinned commit (`ollajev/_vendor/kev`), and its `head.pt`
 is loaded with `torch.load(weights_only=True)`, so the file cannot run code.
 
 Trust is a CLI decision only: `POST /api/pull` never trusts a repo, so a network client cannot
@@ -181,7 +181,7 @@ which blocks DNS-rebinding from a web page. To listen elsewhere, set a key; with
 refuses to start:
 
 ```sh
-OLLAJEV_API_KEY=$(openssl rand -hex 24) OLLAJEV_HOST=0.0.0.0:8000 olla-jev serve
+OLLAJEV_API_KEY=$(openssl rand -hex 24) OLLAJEV_HOST=0.0.0.0:8000 ollajev serve
 export TYPESAFE_API_KEY=<the same key>
 ```
 
@@ -190,11 +190,11 @@ send one, so use it without a key. Put TLS in front (a reverse proxy) before exp
 
 ## Commands
 
-Run `olla-jev <command> --help` for options and an example.
+Run `ollajev <command> --help` for options and an example.
 
 ### Model manager
 
-`olla-jev setup` opens one screen for the model commands. Move with the arrow keys:
+`ollajev setup` opens one screen for the model commands. Move with the arrow keys:
 
 | Key | Same as | What it does |
 |---|---|---|
@@ -216,22 +216,22 @@ server is running.
 
 | Command | What it does |
 |---|---|
-| `olla-jev` | start the server; the first run opens setup |
-| `olla-jev serve [model]` | start the server. Options: `--host`, `--port`, `--no-browser`, `--log-file` |
-| `olla-jev setup` (`tui`) | open the model manager (below) |
-| `olla-jev run [model]` | ask questions from the terminal |
-| `olla-jev pull <model>… [--trust]` | download models; `--trust` skips the repo-code question |
-| `olla-jev list` (`ls`) | downloaded models, family, size and date; `*` marks the default |
-| `olla-jev ps` | models loaded in memory, device and unload time |
-| `olla-jev show <model>` | family, pinned commit, file, limits and local path |
-| `olla-jev rm <model>…` | delete a download (one quant of a GGUF repo, or the whole repo) or an alias |
-| `olla-jev stop <model>` | unload a model from memory now |
-| `olla-jev cp <source> <name>` | give a model a short name |
-| `olla-jev service install` | run the server in the background at login (macOS launchd, Linux systemd) |
-| `olla-jev service uninstall` | stop and remove that service |
-| `olla-jev service status` | show whether the service is running |
-| `olla-jev service logs` | follow the server log |
-| `olla-jev --version` | print the version |
+| `ollajev` | start the server; the first run opens setup |
+| `ollajev serve [model]` | start the server. Options: `--host`, `--port`, `--no-browser`, `--log-file` |
+| `ollajev setup` (`tui`) | open the model manager (below) |
+| `ollajev run [model]` | ask questions from the terminal |
+| `ollajev pull <model>… [--trust]` | download models; `--trust` skips the repo-code question |
+| `ollajev list` (`ls`) | downloaded models, family, size and date; `*` marks the default |
+| `ollajev ps` | models loaded in memory, device and unload time |
+| `ollajev show <model>` | family, pinned commit, file, limits and local path |
+| `ollajev rm <model>…` | delete a download (one quant of a GGUF repo, or the whole repo) or an alias |
+| `ollajev stop <model>` | unload a model from memory now |
+| `ollajev cp <source> <name>` | give a model a short name |
+| `ollajev service install` | run the server in the background at login (macOS launchd, Linux systemd) |
+| `ollajev service uninstall` | stop and remove that service |
+| `ollajev service status` | show whether the service is running |
+| `ollajev service logs` | follow the server log |
+| `ollajev --version` | print the version |
 
 `ps`, `stop` and `rm` talk to the running server when there is one. `list`, `show`, `pull` and `cp`
 work with no server running. Environment variables are listed under [Configuration](#configuration).
@@ -273,13 +273,13 @@ most likely level, noul the same as a two-option choice.
 | `OLLAJEV_MAX_LOADED_MODELS` | `1` | models in memory at once; the least recently used one unloads |
 | `OLLAJEV_MODELS` | Hugging Face cache | where weights are stored |
 | `OLLAJEV_DEVICE` | best available | force `cpu`, `mps` or `cuda` |
-| `OLLAJEV_HOME` | `~/.olla-jev` | config (default model, pins, trusted commits, aliases) and `logs/` |
+| `OLLAJEV_HOME` | `~/.ollajev` | config (default model, pins, trusted commits, aliases) and `logs/` |
 | `OLLAJEV_MAX_BODY_BYTES` | `8388608` | largest request body the API accepts (413 above it) |
 | `OLLAJEV_API_KEY` | none | bearer token every API call must send; required to listen on a non-loopback address |
 
 The model `serve` preloads stays loaded until the server stops.
 
-Config is `~/.olla-jev/config.json`, logs are `~/.olla-jev/logs/server.log`, and weights live in the
+Config is `~/.ollajev/config.json`, logs are `~/.ollajev/logs/server.log`, and weights live in the
 shared Hugging Face cache (`~/.cache/huggingface/hub`). A config left by 0.1 in the old OS folder
 is read once and moved on the next save.
 
@@ -298,15 +298,15 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). In short:
 
 ```sh
 uv sync
-uv run olla-jev --help
+uv run ollajev --help
 uv run pytest
 ```
 
 ## How it compares to Ollama
 
-olla-jev follows Ollama's workflow (pull, list, run, serve) for a different kind of model.
+ollajev follows Ollama's workflow (pull, list, run, serve) for a different kind of model.
 
-| | Ollama | olla-jev |
+| | Ollama | ollajev |
 |---|---|---|
 | Runs | chat and text-generation LLMs | System One decision models (Jev-style) |
 | Answers with | generated text | probabilities for typed questions, one forward pass |
@@ -314,7 +314,7 @@ olla-jev follows Ollama's workflow (pull, list, run, serve) for a different kind
 | Model names | `hf.co/user/repo:Q4_K_M` | `user/repo:Q4_K_M`, same tag rules |
 | Commands | `serve`, `run`, `pull`, `list`, `ps`, `show`, `rm`, `stop`, `cp` | the same |
 | API | OpenAI-compatible `/v1/chat/completions` | Jev-compatible `/v1/systemone` |
-| Background | menu-bar app / systemd service | `olla-jev service install` (launchd / systemd) |
+| Background | menu-bar app / systemd service | `ollajev service install` (launchd / systemd) |
 
 ## License
 
