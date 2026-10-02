@@ -16,8 +16,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import admin, config, normalize, presets
-from .manager import Manager, NotDownloaded, NotTrusted, default_model
+from .. import config, normalize, presets
+from ..manager import Manager, NotDownloaded, NotTrusted, default_model
+from . import admin
 
 JSONContent = str | dict[str, Any] | list[Any]
 

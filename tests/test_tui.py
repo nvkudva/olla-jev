@@ -7,15 +7,16 @@ import asyncio
 import pytest
 from textual.widgets import DataTable
 
-from ollajev import cli, tui
+from ollajev import client
 from ollajev.catalog import CATALOG
+from ollajev.ui import tui
 
 
 @pytest.fixture
 def app(tmp_path, monkeypatch):
     monkeypatch.setenv("OLLAJEV_HOME", str(tmp_path))
     monkeypatch.setenv("OLLAJEV_MODELS", str(tmp_path / "models"))
-    monkeypatch.setattr(cli, "server_running", lambda: False)
+    monkeypatch.setattr(client, "server_running", lambda: False)
     return tui.Models()
 
 

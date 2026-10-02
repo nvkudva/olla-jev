@@ -33,13 +33,17 @@ OLLAJEV_HOME=/tmp/ollajev-dev uv run ollajev serve SupersonicLabs/Julia-1 --port
 
 | Path | What it holds |
 |---|---|
-| `src/ollajev/cli.py` | command line |
-| `src/ollajev/api.py`, `admin.py` | HTTP routes: Jev API, management API |
+| `src/ollajev/ui/` | front ends: `cli.py` command line, `repl.py` for `ollajev run`, `tui.py` model manager |
+| `src/ollajev/server/` | HTTP routes: `api.py` Jev API, `admin.py` management API, `static/` demo page |
+| `src/ollajev/client.py` | talking to a running server, for the front ends |
 | `src/ollajev/manager.py` | loading, unloading and running models |
 | `src/ollajev/store.py`, `names.py` | model names, pinned downloads, trust |
 | `src/ollajev/adapters/` | one module per model family |
 | `src/ollajev/normalize.py` | answers in the TypeSafe shape |
 | `src/ollajev/_vendor/kev/` | kev's loader, vendored; do not edit except as noted in `VENDORED.md` |
+
+Everything else in `src/ollajev/` is the core. The core never imports `server/` or `ui/`, and `server/`
+never imports `ui/`; `tests/test_layout.py` checks this.
 
 ## Adding a model family
 

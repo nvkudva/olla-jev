@@ -8,8 +8,10 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from ollajev import admin, api, cli, config, manager, store
+from ollajev import config, manager, store
 from ollajev.names import parse
+from ollajev.server import admin, api
+from ollajev.ui import cli
 
 
 @pytest.fixture

@@ -45,7 +45,7 @@ Issues = "https://github.com/nvkudva/ollajev/issues"
 Changelog = "https://github.com/nvkudva/ollajev/blob/main/CHANGELOG.md"
 
 [project.scripts]
-ollajev = "ollajev.cli:main"
+ollajev = "ollajev.ui.cli:main"
 
 [dependency-groups]
 dev = [
@@ -94,8 +94,10 @@ typeCheckingMode = "basic"
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S104", "S105", "S106", "PT006", "PT011", "PT018", "RUF012"]
-# cli.py talks to a local http:// server and execs the service viewer; service.py runs launchctl/systemctl.
-"src/ollajev/cli.py" = ["S104", "S310", "S606"]
+# client.py talks to a local http:// server and maps 0.0.0.0 to a reachable address; cli.py probes the
+# server it started and execs the service viewer; service.py runs launchctl/systemctl.
+"src/ollajev/client.py" = ["S104", "S310"]
+"src/ollajev/ui/cli.py" = ["S310", "S606"]
 "src/ollajev/service.py" = ["S603"]
 
 [tool.pytest.ini_options]

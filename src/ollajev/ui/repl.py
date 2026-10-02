@@ -57,20 +57,20 @@ def connect(
 ) -> tuple[Callable[..., dict[str, Any]], Callable[[], None]]:
     """A function that answers questions, and a function that releases it. Uses the running server when
     there is one, otherwise loads the model in this process."""
-    from . import cli, normalize
+    from .. import client, normalize
 
-    if cli.server_running():
+    if client.server_running():
 
         def ask(state: str, questions: dict[str, Any]) -> dict[str, Any]:
             body = {"state": state, "questions": questions}
             if model:
                 body["model"] = model
-            return cli.call("POST", "/v1/systemone", body)
+            return client.call("POST", "/v1/systemone", body)
 
-        say(f"using the server at {cli.server_url()}")
+        say(f"using the server at {client.server_url()}")
         return ask, lambda: None
 
-    from .manager import Manager
+    from ..manager import Manager
 
     manager = Manager()
     say("loading the model in this process (no server running)")

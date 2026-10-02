@@ -13,9 +13,11 @@ from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import DataTable, Footer, Header, Input, Select, Static, TextArea
 
-from . import admin, cli, config, run, service, store
-from .catalog import CATALOG
-from .manager import canonical, default_model, lookup
+from .. import client, config, service, store
+from ..catalog import CATALOG
+from ..manager import canonical, canonical_or, default_model, lookup
+from ..server import admin
+from . import repl
 
 log = logging.getLogger(__name__)
 
@@ -281,7 +283,7 @@ class Ask(ModalScreen[None]):
         questions: dict[str, Any] = {}
         for line in self.query_one("#questions", TextArea).text.splitlines():
             if line.strip():
-                parsed = run.parse_question(line.strip())
+                parsed = repl.parse_question(line.strip())
                 if parsed is None:
                     self.query_one("#answers", Static).update(f"not a question: {line.strip()}")
                     return
@@ -295,7 +297,7 @@ class Ask(ModalScreen[None]):
     @work(thread=True, exclusive=True)
     def send(self, state: str, questions: dict[str, Any]) -> None:
         try:
-            text = "\n".join(run.format_answers(self.ask(state, questions)["answers"]))
+            text = "\n".join(repl.format_answers(self.ask(state, questions)["answers"]))
         except Exception as exc:
             log.exception("ask failed")
             text = f"error: {exc}"
@@ -350,16 +352,16 @@ class Models(App[bool]):
         self.query_one("#status", Static).update(text)
 
     def loaded(self) -> set[str]:
-        if cli.server_running():
+        if client.server_running():
             try:
-                return {m["name"] for m in cli.call("GET", "/api/ps")["models"]}
+                return {m["name"] for m in client.call("GET", "/api/ps")["models"]}
             except SystemExit:
                 return set()
         return {self.local[0]} if self.local else set()
 
     def reload(self) -> None:
         have = {m["name"]: m for m in admin.tags()}
-        default = cli.canonical_or(default_model())
+        default = canonical_or(default_model())
         loaded = self.loaded()
         rows = [(e.name, e.name in have, f"{e.size_gb:.1f} GB", e.languages) for e in CATALOG]
         listed = {r[0] for r in rows}
@@ -378,8 +380,8 @@ class Models(App[bool]):
             self.names.append(name)
         if keep in self.names:
             table.move_cursor(row=self.names.index(keep))
-        running = cli.server_running()
-        self.sub_title = f"server running at {cli.server_url()}" if running else "server not running"
+        running = client.server_running()
+        self.sub_title = f"server running at {client.server_url()}" if running else "server not running"
 
     def selected(self) -> str | None:
         table = self.query_one(DataTable)
@@ -397,7 +399,7 @@ class Models(App[bool]):
         if self.local and self.local[0] != model:
             self.release()
         if self.local is None:
-            ask, release = run.connect(model, lambda text: None)
+            ask, release = repl.connect(model, lambda text: None)
             self.local = (model, ask, release)
         return self.local[1]
 
@@ -499,8 +501,8 @@ class Models(App[bool]):
         name = self.selected()
         if not name:
             return
-        if cli.server_running():
-            self.notify(await asyncio.to_thread(lambda: cli.call("POST", "/api/stop", {"model": name})["status"]))
+        if client.server_running():
+            self.notify(await asyncio.to_thread(lambda: client.call("POST", "/api/stop", {"model": name})["status"]))
         elif self.local and self.local[0] == name:
             await asyncio.to_thread(self.release)
             self.notify("unloaded")
@@ -519,8 +521,8 @@ class Models(App[bool]):
         async def remove() -> None:
             if self.local and self.local[0] == name:
                 await asyncio.to_thread(self.release)
-            if cli.server_running():
-                await asyncio.to_thread(lambda: cli.call("DELETE", "/api/delete", {"model": name}))
+            if client.server_running():
+                await asyncio.to_thread(lambda: client.call("DELETE", "/api/delete", {"model": name}))
             else:
                 await asyncio.to_thread(lambda: store.remove(store.resolve(lookup(name), online=False)))
             self.notify(f"Deleted {name}")

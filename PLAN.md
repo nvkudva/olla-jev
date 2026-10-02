@@ -221,3 +221,5 @@ Phase 1 names: `Mapika/decider-4b-GGUF:Q4_K_M` (default), `Mapika/decider-2b-GGU
 - Rejected: extras (`[gguf]`, `[torch]`): `pick_device` imports torch everywhere, so it needs a code split first.
 - Rejected: wider `requires-python`: torch and llama-cpp-python wheels for 3.13 are unverified.
 - Rejected: blocking eviction of the pinned preload: switching models on a max-1 server must keep working.
+
+- Package layout: front ends (`cli`, `repl`, `tui`) live in `ui/`, the HTTP server (`api`, `admin`, `static/`) in `server/`, and the HTTP client helpers in `client.py`; the rest of the package root is the core. Dependencies point inward, checked by `tests/test_layout.py`. Rejected: a `core/` subpackage (renames nine modules for no gain) and a `tui/` folder holding the CLI (misleading name).
