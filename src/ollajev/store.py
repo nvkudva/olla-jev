@@ -8,10 +8,11 @@ from pathlib import Path
 from huggingface_hub import CachedRevisionInfo, HfApi, HFCacheInfo, snapshot_download
 from huggingface_hub import scan_cache_dir as _scan_cache_dir
 from huggingface_hub.errors import CacheNotFound, LocalEntryNotFoundError, RepositoryNotFoundError
+from huggingface_hub.utils import filter_repo_objects
 
 from . import config
 from .adapters import Family, detect
-from .names import Ref, parse, pick_gguf
+from .names import Ref, parse, pick_gguf, quant_of
 
 
 @dataclass
@@ -117,6 +118,80 @@ def resolve(name: str, *, online: bool = True) -> Resolved:
     resolved = Resolved(ref, family, revision, files, gguf, created=created)
     resolved.allow = family.allow_patterns(resolved)
     return resolved
+
+
+@dataclass(frozen=True)
+class Hit:
+    """A Hugging Face repo found by `search`. family is None when no adapter runs it."""
+
+    repo_id: str
+    downloads: int
+    family: str | None
+
+
+@dataclass(frozen=True)
+class Variant:
+    """One downloadable form of a repo: a GGUF quant, or the full weights. size is the download in bytes."""
+
+    name: str  # what `pull` takes
+    label: str
+    size: int
+
+
+def _family(repo_id: str, files: list[str]) -> Family | None:
+    try:
+        return detect(repo_id, files)
+    except LookupError:
+        return None
+
+
+def search(query: str, limit: int = 40) -> list[Hit]:
+    """Repos matching every word of `query`, most downloaded first. A repo name or URL finds that repo."""
+    api = HfApi()
+    try:
+        info = api.model_info(parse(query).repo_id)
+    except (ValueError, RepositoryNotFoundError):
+        pass
+    else:
+        files = [s.rfilename for s in info.siblings or []]
+        family = _family(info.id, files)
+        return [Hit(info.id, info.downloads or 0, family.name if family else None)]
+    words = query.lower().split()
+    if not words:
+        return []
+    found = api.list_models(search=max(words, key=len), sort="downloads", limit=200, expand=["siblings", "downloads"])
+    hits = []
+    for m in found:
+        if all(w in m.id.lower() for w in words):
+            family = _family(m.id, [s.rfilename for s in m.siblings or []])
+            hits.append(Hit(m.id, m.downloads or 0, family.name if family else None))
+            if len(hits) == limit:
+                break
+    return hits
+
+
+def variants(repo_id: str) -> list[Variant]:
+    """A repo's GGUF quants, or its full weights, with download sizes, smallest first."""
+    info = HfApi().model_info(repo_id, files_metadata=True)
+    return _variants(repo_id, info.sha or "", {s.rfilename: s.size or 0 for s in info.siblings or []})
+
+
+def _variants(repo_id: str, sha: str, sizes: dict[str, int]) -> list[Variant]:
+    files = list(sizes)
+    family = _family(repo_id, files)
+    ggufs = [f for f in files if f.lower().endswith(".gguf")]
+    quants = [quant_of(f) for f in ggufs]
+    tags = [q if q and quants.count(q) == 1 else f.rsplit("/", 1)[-1] for f, q in zip(ggufs, quants, strict=True)]
+    found = []
+    for tag, gguf in zip(tags, ggufs, strict=True) if ggufs else [(None, None)]:
+        ref = Ref(repo_id, tag)
+        if family:
+            allow = family.allow_patterns(Resolved(ref, family, sha, files, gguf))
+            size = sum(sizes[f] for f in filter_repo_objects(files, allow_patterns=allow))
+        else:
+            size = sizes[gguf] if gguf else sum(sizes.values())
+        found.append(Variant(ref.name, tag or "full weights", size))
+    return sorted(found, key=lambda v: v.size)
 
 
 def _pick(ref: Ref, files: list[str]) -> str | None:

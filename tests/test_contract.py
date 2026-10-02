@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from ollajev import api, normalize
+from ollajev import api, normalize, store
 from ollajev.manager import NotDownloaded, NotTrusted, check_limits
 from ollajev.names import parse, pick_gguf
 
@@ -134,6 +134,11 @@ def test_every_preset_is_a_valid_request(client):
         ("Mapika/decider-4b-GGUF:Q4_K_M", "Mapika/decider-4b-GGUF", "Q4_K_M"),
         ("hf.co/Mapika/decider-4b-GGUF:q8_0", "Mapika/decider-4b-GGUF", "q8_0"),
         ("https://huggingface.co/a/b:x.gguf", "a/b", "x.gguf"),
+        ("https://huggingface.co/a/b/", "a/b", None),
+        ("https://huggingface.co/a/b/tree/main", "a/b", None),
+        ("https://huggingface.co/a/b/blob/main/x_q4_k_m.gguf", "a/b", "x_q4_k_m.gguf"),
+        ("https://huggingface.co/a/b/resolve/main/sub/x.gguf?download=true", "a/b", "x.gguf"),
+        ("https://huggingface.co/a/b/blob/main/README.md", "a/b", None),
     ],
 )
 def test_parse_names(name, repo, tag):
@@ -154,6 +159,7 @@ def test_gguf_quant_selection_follows_ollama():
     assert pick_gguf(FILES, "q8_0") == "m-Q8_0.gguf"
     assert pick_gguf(FILES, "m-BF16.gguf") == "m-BF16.gguf"
     assert pick_gguf(["m-Q8_0.gguf", "m-Q5_K_M.gguf"], None) == "m-Q5_K_M.gguf"
+    assert pick_gguf(["m_f16.gguf", "m_ud_q4_k_m.gguf"], "Q4_K_M") == "m_ud_q4_k_m.gguf"
     with pytest.raises(ValueError):
         pick_gguf(FILES, "Q2_K")
 
@@ -185,3 +191,20 @@ def test_fresh_machine_without_a_model_cache_lists_no_models(client, tmp_path, m
     r = client.get("/v1/models")
     assert r.status_code == 200 and r.json() == {"models": []}
     assert client.get("/api/tags").json() == {"models": []}
+
+
+def test_variants_name_each_quant_and_size_its_download():
+    sizes = {
+        "m-Q4_K_M.gguf": 4,
+        "m-Q8_0.gguf": 8,
+        "m-Q4_K_M-imat.gguf": 5,
+        "decider_config.json": 1,
+        "tokenizer.json": 1,
+    }
+    found = store._variants("Mapika/decider-x-GGUF", "sha", sizes)
+    assert [(v.name, v.size) for v in found] == [
+        ("Mapika/decider-x-GGUF:Q4_K_M", 6),
+        ("Mapika/decider-x-GGUF:m-Q4_K_M-imat.gguf", 7),
+        ("Mapika/decider-x-GGUF:Q8_0", 10),
+    ]
+    assert [v.name for v in store._variants("u/r", "sha", {"weights.bin": 3})] == ["u/r"]
