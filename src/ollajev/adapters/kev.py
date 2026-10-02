@@ -1,6 +1,6 @@
 """jaredpalmer/kev-*: LoRA adapter + pointer head on a Qwen base, scored by kev's own loader.
 
-The repos ship no code; kev's loader is vendored from GitHub at a pinned commit (olla_jev/_vendor/kev).
+The repos ship no code; kev's loader is vendored from GitHub at a pinned commit (ollajev/_vendor/kev).
 The base model is fetched at the revision head.pt names.
 """
 

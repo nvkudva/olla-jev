@@ -194,9 +194,9 @@ Phase 1 names: `Mapika/decider-4b-GGUF:Q4_K_M` (default), `Mapika/decider-2b-GGU
 - `cp` creates a name alias in config; it copies no files.
 - `serve` scans for a free port from 8000 unless a port is given, and records the bound URL so other commands find it.
 
-### 2026-10-01 — Renamed to olla-jev, src layout
+### 2026-10-01 — Renamed to ollajev, src layout
 
-- Project, command and distribution renamed from `free-jev-server` to `olla-jev`; import package `olla_jev` under `src/` (PyPA src layout).
+- Project, command and distribution renamed from `free-jev-server` to `ollajev`; import package `ollajev` under `src/` (PyPA src layout).
 - Environment variables renamed from `FREEJEV_*` to `OLLAJEV_*`.
 - Rejected `ollama-jev`: "Ollama" is another company's product name, and Ollama now ships its own `/v1/systemone` (PR #18606, 2026-09-28), so the name would read as official. README states no affiliation.
 - Earlier sections of this file use the old names.
@@ -205,16 +205,16 @@ Phase 1 names: `Mapika/decider-4b-GGUF:Q4_K_M` (default), `Mapika/decider-2b-GGU
 
 - Install: `install.sh` / `install.ps1` replace `start.sh` / `start.ps1`. They install uv if missing, then `uv tool install` from a checkout, git URL or PyPI. `--service`, `--uninstall`.
 - Developers use plain `uv sync` / `uv run`; no wrapper script.
-- `olla-jev service install|uninstall|status|logs`: launchd agent `com.olla-jev.server` on macOS, systemd user unit `olla-jev.service` on Linux. Windows has no service; run `olla-jev serve`.
+- `ollajev service install|uninstall|status|logs`: launchd agent `com.ollajev.server` on macOS, systemd user unit `ollajev.service` on Linux. Windows has no service; run `ollajev serve`.
 - Config and logs in OS folders via platformdirs; `OLLAJEV_HOME` overrides both. Models stay in the Hugging Face cache.
 - Dev tools in a PEP 735 dependency group: pytest, ruff, pyright, typesafe-sdk, pre-commit.
 - CI (GitHub Actions): ruff, pyright, pytest on macOS/Linux/Windows, wheel build. PyPI publishing waits for the GitHub repo.
-- Rejected: an `init` command (means "create a project" in other tools; first-run setup is `olla-jev setup`). Rejected: click/typer (argparse covers the CLI).
+- Rejected: an `init` command (means "create a project" in other tools; first-run setup is `ollajev setup`). Rejected: click/typer (argparse covers the CLI).
 - `PLAN.md` / `TODO.md` stay at the repo root.
 
-### 2026-10-01 — Hardening and ~/.olla-jev
+### 2026-10-01 — Hardening and ~/.ollajev
 
-- Config and logs live in `~/.olla-jev` (`OLLAJEV_HOME` overrides); this replaces the OS folders via platformdirs. A config in the old OS folder is read once and migrated on the next save. Config is JSON, written under a lock with an atomic replace.
+- Config and logs live in `~/.ollajev` (`OLLAJEV_HOME` overrides); this replaces the OS folders via platformdirs. A config in the old OS folder is read once and migrated on the next save. Config is JSON, written under a lock with an atomic replace.
 - `OLLAJEV_API_KEY` bearer auth; non-loopback bind is refused without it. Loopback binds check the Host header. Trust is CLI-only, never over HTTP.
 - A repo is pinned only after its download succeeds.
 - Dependencies are ranges in `pyproject.toml`; `uv.lock` holds exact versions.

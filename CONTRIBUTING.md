@@ -3,10 +3,10 @@
 ## Setup
 
 ```sh
-git clone https://github.com/nvkudva/olla-jev.git
-cd olla-jev
+git clone https://github.com/nvkudva/ollajev.git
+cd ollajev
 uv sync                      # Python 3.12 environment with the dev tools
-uv run olla-jev --help
+uv run ollajev --help
 ```
 
 ## Checks
@@ -26,24 +26,24 @@ The tests load no model weights. To check a change against a real model, run the
 it a request:
 
 ```sh
-OLLAJEV_HOME=/tmp/olla-jev-dev uv run olla-jev serve SupersonicLabs/Julia-1 --port 8765
+OLLAJEV_HOME=/tmp/ollajev-dev uv run ollajev serve SupersonicLabs/Julia-1 --port 8765
 ```
 
 ## Layout
 
 | Path | What it holds |
 |---|---|
-| `src/olla_jev/cli.py` | command line |
-| `src/olla_jev/api.py`, `admin.py` | HTTP routes: Jev API, management API |
-| `src/olla_jev/manager.py` | loading, unloading and running models |
-| `src/olla_jev/store.py`, `names.py` | model names, pinned downloads, trust |
-| `src/olla_jev/adapters/` | one module per model family |
-| `src/olla_jev/normalize.py` | answers in the TypeSafe shape |
-| `src/olla_jev/_vendor/kev/` | kev's loader, vendored; do not edit except as noted in `VENDORED.md` |
+| `src/ollajev/cli.py` | command line |
+| `src/ollajev/api.py`, `admin.py` | HTTP routes: Jev API, management API |
+| `src/ollajev/manager.py` | loading, unloading and running models |
+| `src/ollajev/store.py`, `names.py` | model names, pinned downloads, trust |
+| `src/ollajev/adapters/` | one module per model family |
+| `src/ollajev/normalize.py` | answers in the TypeSafe shape |
+| `src/ollajev/_vendor/kev/` | kev's loader, vendored; do not edit except as noted in `VENDORED.md` |
 
 ## Adding a model family
 
-Add a module under `src/olla_jev/adapters/` with a `FAMILY` object that implements the `Family`
+Add a module under `src/ollajev/adapters/` with a `FAMILY` object that implements the `Family`
 protocol in `adapters/__init__.py` (`matches`, `allow_patterns`, `limits`, `load`), and register it
 in `families()`. Set `runs_repo_code = True` if it imports Python from the model repo. Run the new
 model end to end through `/v1/systemone` before adding it to `catalog.py`.

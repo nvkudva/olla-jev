@@ -132,7 +132,7 @@ class Options(ModalScreen[dict[str, Any] | None]):
 
 
 class Ask(ModalScreen[None]):
-    """Ask a model questions. One question per line, in the same form `olla-jev run` takes."""
+    """Ask a model questions. One question per line, in the same form `ollajev run` takes."""
 
     BINDINGS: ClassVar = [("escape", "close", "Close"), Binding("ctrl+r", "send", "Ask", priority=True)]
 
@@ -199,7 +199,7 @@ class Ask(ModalScreen[None]):
 
 
 class Models(App[bool]):
-    TITLE = "olla-jev"
+    TITLE = "ollajev"
     CSS = CSS
     BINDINGS: ClassVar = [
         Binding("p", "pull", "Pull"),
@@ -469,7 +469,7 @@ class Models(App[bool]):
             if running:
                 if await self.push_screen_wait(Confirm("Background service", "Stop and remove it?")):
                     self.notify(await asyncio.to_thread(service.uninstall))
-            elif await self.push_screen_wait(Confirm("Background service", "Run olla-jev in the background at login?")):
+            elif await self.push_screen_wait(Confirm("Background service", "Run ollajev in the background at login?")):
                 self.notify(await asyncio.to_thread(service.install))
         except SystemExit as exc:
             self.notify(str(exc), severity="error")

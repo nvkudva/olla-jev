@@ -21,13 +21,13 @@ DEFAULT_MODEL = "Mapika/decider-4b-GGUF:Q4_K_M"
 DEFAULT_PORT = 8000
 
 
-APP = "olla-jev"
+APP = "ollajev"
 
 
 def config_dir() -> Path:
-    """OLLAJEV_HOME, else ~/.olla-jev."""
+    """OLLAJEV_HOME, else ~/.ollajev."""
     home = os.environ.get("OLLAJEV_HOME")
-    return Path(home) if home else Path.home() / ".olla-jev"
+    return Path(home) if home else Path.home() / ".ollajev"
 
 
 def log_dir() -> Path:
@@ -120,7 +120,7 @@ def _legacy_path() -> Path:
 def load() -> dict[str, Any]:
     path = config_path()
     if not path.exists() and "OLLAJEV_HOME" not in os.environ and _legacy_path().exists():
-        path = _legacy_path()  # first run after the move to ~/.olla-jev; the next save writes the new file
+        path = _legacy_path()  # first run after the move to ~/.ollajev; the next save writes the new file
     try:
         return json.loads(path.read_text())
     except FileNotFoundError:

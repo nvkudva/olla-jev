@@ -90,11 +90,11 @@ OPEN_PATHS = ("/", "/demo", "/static/")  # the health probe and the demo page ne
 log = logging.getLogger(__name__)
 
 try:
-    _version = version("olla-jev")
+    _version = version("ollajev")
 except PackageNotFoundError:  # running from a source tree that was never installed
     _version = "0+unknown"
 
-app = FastAPI(title="olla-jev", version=_version, lifespan=lifespan)
+app = FastAPI(title="ollajev", version=_version, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 

@@ -1,5 +1,5 @@
 [project]
-name = "olla-jev"
+name = "ollajev"
 version = "0.1.0"
 description = "Run System One decision models from Hugging Face locally behind the Jev / System One API"
 readme = "README.md"
@@ -39,13 +39,13 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/nvkudva/olla-jev"
-Source = "https://github.com/nvkudva/olla-jev"
-Issues = "https://github.com/nvkudva/olla-jev/issues"
-Changelog = "https://github.com/nvkudva/olla-jev/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/nvkudva/ollajev"
+Source = "https://github.com/nvkudva/ollajev"
+Issues = "https://github.com/nvkudva/ollajev/issues"
+Changelog = "https://github.com/nvkudva/ollajev/blob/main/CHANGELOG.md"
 
 [project.scripts]
-olla-jev = "olla_jev.cli:main"
+ollajev = "ollajev.cli:main"
 
 [dependency-groups]
 dev = [
@@ -75,12 +75,12 @@ torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/olla_jev"]
+packages = ["src/ollajev"]
 
 [tool.ruff]
 line-length = 120
 target-version = "py312"
-extend-exclude = ["src/olla_jev/_vendor"]
+extend-exclude = ["src/ollajev/_vendor"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "S", "PT", "RUF"]
@@ -88,15 +88,15 @@ ignore = ["E501"]  # the formatter owns line length; long strings stay readable
 
 [tool.pyright]
 include = ["src"]
-exclude = ["src/olla_jev/_vendor"]
+exclude = ["src/ollajev/_vendor"]
 pythonVersion = "3.12"
 typeCheckingMode = "basic"
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S104", "S105", "S106", "PT006", "PT011", "PT018", "RUF012"]
 # cli.py talks to a local http:// server and execs the service viewer; service.py runs launchctl/systemctl.
-"src/olla_jev/cli.py" = ["S104", "S310", "S606"]
-"src/olla_jev/service.py" = ["S603"]
+"src/ollajev/cli.py" = ["S104", "S310", "S606"]
+"src/ollajev/service.py" = ["S603"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
