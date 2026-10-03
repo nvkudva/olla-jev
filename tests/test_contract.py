@@ -403,3 +403,15 @@ def test_ipv6_is_skipped_when_it_does_not_connect(monkeypatch):
     assert store._ipv6_reaches("huggingface.co") is False
     monkeypatch.setattr(socket, "getaddrinfo", no_route)  # no IPv6 address at all: nothing tries IPv6
     assert store._ipv6_reaches("huggingface.co") is True
+
+
+def test_saved_settings_apply_unless_the_environment_overrides(tmp_path, monkeypatch):
+    from ollajev import config
+
+    monkeypatch.setenv("OLLAJEV_HOME", str(tmp_path))
+    monkeypatch.delenv("OLLAJEV_KEEP_ALIVE", raising=False)
+    monkeypatch.delenv("OLLAJEV_MAX_LOADED_MODELS", raising=False)
+    config.update(keep_alive="1h", max_loaded_models=3)
+    assert (config.keep_alive(), config.max_loaded_models()) == (3600, 3)
+    monkeypatch.setenv("OLLAJEV_MAX_LOADED_MODELS", "2")
+    assert config.max_loaded_models() == 2

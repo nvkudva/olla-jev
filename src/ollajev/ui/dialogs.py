@@ -236,42 +236,78 @@ def valid_host(host: str) -> bool:
     return True
 
 
-class Options(Clickable, ModalScreen[dict[str, Any] | None]):
+class Settings(Clickable, ModalScreen[dict[str, Any] | None]):
+    """Server settings saved in the config file. An OLLAJEV_* environment variable still wins over a saved value."""
+
     BINDINGS: ClassVar = [("escape", "cancel", "Cancel")]
 
     def compose(self) -> ComposeResult:
         saved = config.load()
         with Vertical(classes="dialog") as box:
-            box.border_title = "Server options"
-            yield Static("Device (auto picks cuda, then mps, then cpu)")
-            yield Select(
-                [(d, d) for d in ("auto", "mps", "cuda", "cpu")],
-                value=saved.get("device", "auto"),
-                allow_blank=False,
-                id="device",
-            )
-            yield Static("Address")
-            yield Input(saved.get("host", "127.0.0.1"), id="host")
-            yield Static("Port")
-            yield Input(str(saved.get("port", config.DEFAULT_PORT)), id="port", type="integer")
+            box.border_title = "Settings"
+            with Horizontal(classes="field"):
+                yield Static("Device")
+                yield Select(
+                    [(device, device) for device in ("auto", "mps", "cuda", "cpu")],
+                    value=saved.get("device", "auto"),
+                    allow_blank=False,
+                    id="device",
+                    compact=True,
+                )
+            with Horizontal(classes="field"):
+                yield Static("Address")
+                yield Input(saved.get("host", "127.0.0.1"), id="host", compact=True)
+            with Horizontal(classes="field"):
+                yield Static("Port")
+                yield Input(str(saved.get("port", config.DEFAULT_PORT)), id="port", type="integer", compact=True)
+            with Horizontal(classes="field"):
+                yield Static("Keep idle model loaded")
+                yield Input(str(saved.get("keep_alive", "5m")), id="keep_alive", placeholder="5m, 1h, -1", compact=True)
+            with Horizontal(classes="field"):
+                yield Static("Models in memory")
+                yield Input(
+                    str(saved.get("max_loaded_models", 1)), id="max_loaded_models", type="integer", compact=True
+                )
+            yield Static(f"Saved in {config.config_path()}; an OLLAJEV_* variable overrides it.", classes="hint")
             yield buttons(("✓ Save", "save", "primary"), ("✕ Cancel", "cancel", "default"))
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         self.action_save()
 
+    def value(self, field: str) -> str:
+        return self.query_one(f"#{field}", Input).value.strip()
+
     def action_save(self) -> None:
-        port = self.query_one("#port", Input).value.strip()
+        port = self.value("port")
         if not port.isdigit() or not 0 < int(port) < 65536:
             self.notify("Port must be 1-65535", severity="error")
             return
-        host = self.query_one("#host", Input).value.strip() or "127.0.0.1"
+        host = self.value("host") or "127.0.0.1"
         if not valid_host(host):
             self.notify("Address must be a host name or IP address, without a port", severity="error")
             return
         if not config.is_loopback(host) and not config.api_key():
             self.notify(f"Serving on {host} needs OLLAJEV_API_KEY set first", severity="error")
             return
-        self.dismiss({"device": self.query_one("#device", Select).value, "host": host, "port": int(port)})
+        keep_alive = self.value("keep_alive") or "5m"
+        try:
+            config.parse_duration(keep_alive)
+        except ValueError:
+            self.notify("Keep loaded must be seconds or a duration like 5m, 1h, or -1", severity="error")
+            return
+        models = self.value("max_loaded_models")
+        if not models.isdigit() or int(models) < 1:
+            self.notify("Models in memory must be 1 or more", severity="error")
+            return
+        self.dismiss(
+            {
+                "device": self.query_one("#device", Select).value,
+                "host": host,
+                "port": int(port),
+                "keep_alive": keep_alive,
+                "max_loaded_models": int(models),
+            }
+        )
 
     def action_cancel(self) -> None:
         self.dismiss(None)

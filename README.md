@@ -196,7 +196,7 @@ Run `ollajev <command> --help` for options and an example.
 
 ### Model manager
 
-`ollajev setup` opens one screen for the model commands. Move with the arrow keys or the mouse. Every row has buttons: Download for a model not on disk yet, then Serve and Delete. Serve starts the server right there: a Server panel shows its address and model, with Demo, Restart and Stop; quitting the manager stops it. The key bar under the list and the buttons in every dialog can be clicked too. The keys:
+`ollajev setup` opens one screen for the model commands. Move with the arrow keys or the mouse. Every row has buttons: Download for a model not on disk yet, then Serve and Delete, and Info. The menu bar at the top (Add, Default, Filter, Settings, Help, Quit) can be clicked or used with its keys. Serve starts the server right there: a Server panel shows its address and model, with Demo, Restart and Stop; quitting the manager stops it. The key bar under the list and the buttons in every dialog can be clicked too. The keys:
 
 | Key | Same as | What it does |
 |---|---|---|
@@ -209,7 +209,7 @@ Run `ollajev <command> --help` for options and an example.
 | `a` | `cp` | give it a short name |
 | `i` | `show` | family, commit, limits, path |
 | `n` | `pull` | add any Hugging Face repo by name |
-| `o` | | device, address and port for the server |
+| `o` | | settings: device, address, port, how long an idle model stays loaded, models in memory; saved in `~/.ollajev/config.json` |
 | `b` | `service` | install or remove the background service |
 | `s` | `serve` | start the server for the default model, or restart it |
 | `/` | | filter the list by name |
@@ -274,6 +274,9 @@ answered: choice `(n·p_max − 1)/(n − 1)`, score one minus the normalised ex
 most likely level, noul the same as a two-option choice.
 
 ## Configuration
+
+The model manager's Settings (`o`) saves the device, address, port, keep-alive and models in memory to
+`~/.ollajev/config.json`. An environment variable below overrides the saved value.
 
 | Variable | Default | Meaning |
 |---|---|---|

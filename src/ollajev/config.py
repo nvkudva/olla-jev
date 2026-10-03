@@ -74,18 +74,22 @@ def models_dir() -> str | None:
 
 
 def keep_alive() -> float:
-    """Seconds an idle model stays loaded. OLLAJEV_KEEP_ALIVE accepts 300, 5m, 1h, or -1 for forever."""
+    """Seconds an idle model stays loaded: OLLAJEV_KEEP_ALIVE, else the saved setting, else 5m. Accepts 300, 5m,
+    1h, or -1 for forever."""
+    value = os.environ.get("OLLAJEV_KEEP_ALIVE") or load().get("keep_alive") or "5m"
     try:
-        return parse_duration(os.environ.get("OLLAJEV_KEEP_ALIVE", "5m"))
+        return parse_duration(value)
     except ValueError:
-        raise ValueError("OLLAJEV_KEEP_ALIVE must be seconds or a duration like 5m, 1h, -1") from None
+        raise ValueError("keep alive (OLLAJEV_KEEP_ALIVE) must be seconds or a duration like 5m, 1h, -1") from None
 
 
 def max_loaded_models() -> int:
+    """How many models stay in memory at once: OLLAJEV_MAX_LOADED_MODELS, else the saved setting, else 1."""
+    value = os.environ.get("OLLAJEV_MAX_LOADED_MODELS") or load().get("max_loaded_models") or 1
     try:
-        return int(os.environ.get("OLLAJEV_MAX_LOADED_MODELS", "1"))
+        return int(value)
     except ValueError:
-        raise ValueError("OLLAJEV_MAX_LOADED_MODELS must be a whole number") from None
+        raise ValueError("models in memory (OLLAJEV_MAX_LOADED_MODELS) must be a whole number") from None
 
 
 def max_body_bytes() -> int:

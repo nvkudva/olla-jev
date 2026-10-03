@@ -101,7 +101,7 @@ def test_quit_keys_return_false(app, key):
 
 
 @pytest.mark.parametrize(
-    ("key", "screen"), [("o", "Options"), ("n", "AddModel"), ("a", "Prompt"), ("i", "Info"), ("question_mark", "Info")]
+    ("key", "screen"), [("o", "Settings"), ("n", "AddModel"), ("a", "Prompt"), ("i", "Info"), ("question_mark", "Info")]
 )
 def test_keys_open_their_dialog_and_escape_closes_it(app, key, screen):
     assert drive(app, [key]) == [screen]
@@ -354,7 +354,7 @@ def test_every_row_has_its_buttons(app):
             cells = [table.get_cell(name, "actions").plain for name in app.names[:3]]
             return [[word for word in cell.split() if word.isalpha()] for cell in cells]
 
-    assert asyncio.run(go()) == [["Download"]] * 3
+    assert asyncio.run(go()) == [["Download", "Info"]] * 3
 
 
 def test_confirm_buttons_answer_it():
@@ -391,9 +391,9 @@ def test_row_actions_offer_download_until_on_disk(app):
     def labels(text):
         return [word for word in text.plain.split() if word.isalpha()]
 
-    assert labels(app.row_actions("a/b", on_disk=False, is_loaded=False)) == ["Download"]
-    assert labels(app.row_actions("a/b", on_disk=True, is_loaded=True)) == ["Serve", "Delete"]
-    assert labels(app.row_actions("a/b", on_disk=True, is_loaded=False)) == ["Serve", "Delete"]
+    assert labels(app.row_actions("a/b", on_disk=False, is_loaded=False)) == ["Download", "Info"]
+    assert labels(app.row_actions("a/b", on_disk=True, is_loaded=True)) == ["Serve", "Delete", "Info"]
+    assert labels(app.row_actions("a/b", on_disk=True, is_loaded=False)) == ["Serve", "Delete", "Info"]
 
 
 @pytest.mark.parametrize(
