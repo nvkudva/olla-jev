@@ -220,7 +220,7 @@ Run `ollajev <command> --help` for options and an example.
 | `?` | | list every key |
 | `q` | | quit |
 
-The Status column shows `default`, `loaded` and `on disk` labels; a dimmed size is an estimate until the model
+The Status column shows `default`, `loaded`, `downloaded` and `available` labels; a dimmed size is an estimate until the model
 is downloaded. The top bar shows whether a server is running. The colours follow your
 system's light or dark mode; pick another theme with Ctrl+P and it is remembered.
 

@@ -6,6 +6,7 @@ import asyncio
 import ipaddress
 import logging
 import time
+import webbrowser
 from typing import Any, ClassVar
 
 from rich.text import Text
@@ -28,13 +29,22 @@ def buttons(*specs: tuple[str, str, str], row_id: str | None = None) -> Horizont
     return Horizontal(*row, classes="buttons", id=row_id)
 
 
+def close_button(action: str) -> Horizontal:
+    """The ✕ in a dialog's top right corner; it runs the dialog's own close or cancel action, like Esc."""
+    button = Button("✕", id=f"close-{action}", compact=True, classes="close")
+    button.can_focus = False  # Tab and Enter stay with the dialog's fields and its main buttons
+    return Horizontal(button, classes="close-row")
+
+
 class Clickable:
     """Runs the action named by a `buttons` button, so the mouse does what the keys do."""
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id and event.button.id.startswith("do-"):
+        button_id = event.button.id or ""
+        prefix = next((prefix for prefix in ("do-", "close-") if button_id.startswith(prefix)), None)
+        if prefix:
             event.stop()
-            await self.run_action(event.button.id.removeprefix("do-"))  # type: ignore[attr-defined]
+            await self.run_action(button_id.removeprefix(prefix))  # type: ignore[attr-defined]
 
 
 class Prompt(Clickable, ModalScreen[str | None]):
@@ -47,6 +57,7 @@ class Prompt(Clickable, ModalScreen[str | None]):
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog") as box:
             box.border_title = self.heading
+            yield close_button("cancel")
             yield Input(placeholder=self.placeholder)
             yield buttons(("✓ OK", "submit", "primary"), ("✕ Cancel", "cancel", "default"))
 
@@ -81,6 +92,7 @@ class AddModel(Clickable, ModalScreen[str | None]):
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog wide") as box:
             box.border_title = "Add a model from Hugging Face"
+            yield close_button("cancel")
             yield Input(placeholder="search words, user/repo or a huggingface.co link", id="query")
             yield DataTable(id="results", cursor_type="row")
             yield Static("", id="note")
@@ -188,6 +200,7 @@ class Confirm(Clickable, ModalScreen[bool]):
         # Anything whose safe answer is no (delete, trust code, quit mid-download) gets a red frame.
         with Vertical(classes="dialog" if self.default else "dialog danger") as box:
             box.border_title = self.heading
+            yield close_button("no")
             yield Static(self.body)
             yes_variant = "primary" if self.default else "error"
             yield buttons(("✓ Yes", "yes", yes_variant), ("✕ No", "no", "default"))
@@ -209,15 +222,23 @@ class Confirm(Clickable, ModalScreen[bool]):
 class Info(Clickable, ModalScreen[None]):
     BINDINGS: ClassVar = [("escape,enter,q", "close", "Close")]
 
-    def __init__(self, title: str, body: str | Text, danger: bool = False) -> None:
+    def __init__(self, title: str, body: str | Text, danger: bool = False, link: str | None = None) -> None:
         super().__init__()
-        self.heading, self.body, self.danger = title, body, danger
+        self.heading, self.body, self.danger, self.link = title, body, danger, link
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog danger" if self.danger else "dialog") as box:
             box.border_title = self.heading
+            yield close_button("close")
             yield Static(self.body)
-            yield buttons(("✕ Close", "close", "primary"))
+            if self.link:
+                yield buttons(("⧉ HF page", "open_link", "primary"), ("✕ Close", "close", "default"))
+            else:
+                yield buttons(("✕ Close", "close", "primary"))
+
+    def action_open_link(self) -> None:
+        if self.link:
+            webbrowser.open(self.link)
 
     def action_close(self) -> None:
         self.dismiss(None)
@@ -245,6 +266,7 @@ class Settings(Clickable, ModalScreen[dict[str, Any] | None]):
         saved = config.load()
         with Vertical(classes="dialog") as box:
             box.border_title = "Settings"
+            yield close_button("cancel")
             with Horizontal(classes="field"):
                 yield Static("Device")
                 yield Select(
@@ -327,6 +349,7 @@ class Ask(Clickable, ModalScreen[None]):
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog") as box:
             box.border_title = f"Ask {self.model}"
+            yield close_button("close")
             yield Static("State")
             yield TextArea(id="state")
             yield Static("Questions, one per line")

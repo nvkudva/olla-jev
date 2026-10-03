@@ -272,7 +272,7 @@ def test_status_line_and_filter(app):
             return status, pill, list(app.names)
 
     status, pill, names = asyncio.run(go())
-    assert "on disk" in status and "server off" in pill
+    assert "downloaded" in status and "server off" in pill
     assert names and all("julia" in name.lower() for name in names)
 
 
@@ -415,3 +415,43 @@ def test_theme_follows_the_background_the_terminal_reports(monkeypatch, backgrou
     tui.system_theme.cache_clear()
     assert tui.system_theme() == theme
     tui.system_theme.cache_clear()
+
+
+@pytest.mark.parametrize(
+    ("dialog", "button", "answer"),
+    [
+        (lambda: tui.dialogs.Info("t", "b"), "#close-close", None),
+        (lambda: tui.dialogs.Confirm("t", "b", default=True), "#close-no", False),
+        (lambda: tui.dialogs.Prompt("t"), "#close-cancel", None),
+    ],
+)
+def test_the_corner_cross_closes_every_dialog(dialog, button, answer):
+    async def go():
+        answers = []
+
+        class Host(tui.App):
+            def on_mount(self):
+                self.push_screen(dialog(), answers.append)
+
+        async with Host().run_test(size=(100, 30)) as pilot:
+            await pilot.pause()
+            await pilot.click(button)
+            await pilot.pause()
+        return answers
+
+    assert asyncio.run(go()) == [answer]
+
+
+def test_info_links_to_the_model_on_hugging_face(app, monkeypatch):
+    opened = []
+    monkeypatch.setattr(tui.dialogs.webbrowser, "open", opened.append)
+
+    async def go():
+        async with app.run_test(size=(160, 40)) as pilot:
+            await pilot.press("i")
+            await pilot.pause()
+            await pilot.click("#do-open_link")
+            await pilot.pause()
+
+    asyncio.run(go())
+    assert opened == [f"https://huggingface.co/{CATALOG[0].name.partition(':')[0]}"]

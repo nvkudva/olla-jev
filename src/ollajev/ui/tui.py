@@ -68,10 +68,13 @@ DataTable > .datatable--hover { background: $boost; }
 
 ModalScreen { align: center middle; background: $background 60%; }
 .dialog {
-    width: 68; max-width: 96%; height: auto; max-height: 90%; padding: 1 2; background: $panel;
+    width: 68; max-width: 96%; height: auto; max-height: 90%; padding: 0 2 1 2; background: $panel;
     border: round $primary; border-title-align: left; border-title-style: bold; border-title-color: $text;
 }
 .dialog.danger { border: round $error; }
+.close-row { height: 1; align-horizontal: right; margin-bottom: 1; }
+.dialog Button.close { width: 3; min-width: 0; padding: 0; background: transparent; border: none; color: $text-muted; }
+.dialog Button.close:hover { color: $error; background: transparent; }
 .hint { color: $text-muted; margin-top: 1; }
 .dialog Input, .dialog Select { margin-bottom: 1; }
 .field { height: auto; margin-bottom: 1; }
@@ -90,7 +93,8 @@ ModalScreen { align: center middle; background: $background 60%; }
 #results { height: 20; }
 """
 
-ROW_BUTTON_WIDTH = 11  # every button in the list is this wide, so they line up in columns
+ROW_BUTTON_WIDTH = 10  # every button in the list is this wide, so they line up in columns
+ROW_BUTTON_GAP = "   "
 LANGUAGE_SHORT = {"English": "en", "Multilingual": "multi", "100+ languages": "100+"}
 
 
@@ -146,6 +150,10 @@ def system_theme() -> str:
             return "textual-dark"
         return "textual-dark" if result.stdout.strip() == "Dark" else "textual-light"
     return "textual-dark"
+
+
+def hugging_face_page(repo_id: str) -> str:
+    return f"https://huggingface.co/{repo_id}"
 
 
 class NoWaitExecutor(ThreadPoolExecutor):
@@ -352,7 +360,7 @@ class Models(App[bool]):
         keep = self.selected()
         table.clear(columns=True)
         model_width = min(50, max([len(row.label) for row in rows] + [12]))
-        table.add_column("Status", width=11, key="state")
+        table.add_column("Status", width=12, key="state")
         table.add_column("Model", width=model_width, key="model")
         table.add_column(Text("Size", justify="right"), width=8, key="size")
         table.add_column("Lang", width=6, key="lang")
@@ -386,7 +394,7 @@ class Models(App[bool]):
             self.say_idle()
 
     def state_pills(self, is_default: bool, is_loaded: bool, on_disk: bool) -> Text:
-        """★ default and ● loaded in colour; ✓ on disk or ○ available (not downloaded) dim. A loaded default
+        """★ default and ● loaded in colour; ✓ downloaded or ○ available (not downloaded) dim. A loaded default
         shows as ★● loaded, so the column stays narrow."""
         labels = Text()
         if is_default and is_loaded:
@@ -397,7 +405,7 @@ class Models(App[bool]):
         elif is_loaded:
             labels.append("● loaded", style=f"bold {self.colour('success')}")
         elif on_disk:
-            labels.append("✓ on disk", style="dim")
+            labels.append("✓ downloaded", style="dim")
         else:
             labels.append("○ available", style="dim")
         return labels
@@ -413,18 +421,19 @@ class Models(App[bool]):
         """Clickable buttons for one row: Download before it is on disk, then Serve and Delete; Info always."""
 
         def button(label: str, action: str, colour: str, slots: int = 1) -> Text:
-            padded = label.ljust(ROW_BUTTON_WIDTH * slots)
+            padded = label.ljust(ROW_BUTTON_WIDTH * slots + len(ROW_BUTTON_GAP) * (slots - 1))
             return Text.from_markup(f"[bold {colour}][@click=app.on_row({name!r}, {action!r})]{padded}[/][/]")
 
-        actions = Text()
         if on_disk:
-            actions.append(button("▶ Serve", "serve_model", self.colour("success")))
-            actions.append(button("✕ Delete", "remove", self.colour("error")))
+            row = [
+                button("▶ Serve", "serve_model", self.colour("success")),
+                button("✕ Delete", "remove", self.colour("error")),
+            ]
         else:
             # Two slots wide, where Serve and Delete sit on a downloaded row, so Info lines up below Info.
-            actions.append(button("↓ Download", "pull", self.colour("accent"), slots=2))
-        actions.append(button("≡ Info", "info", self.colour("foreground")))
-        return actions
+            row = [button("↓ Download", "pull", self.colour("accent"), slots=2)]
+        row.append(button("≡ Info", "info", self.colour("foreground")))
+        return Text(ROW_BUTTON_GAP).join(row)
 
     async def action_on_row(self, name: str, action: str) -> None:
         """A click on a row's action link: select that row, then run the action as its key would."""
@@ -476,7 +485,7 @@ class Models(App[bool]):
 
     def describe(self, have: dict[str, Any]) -> str:
         on_disk = sum(model["size"] for model in have.values())
-        return f"{len(have)} on disk · {dialogs.human(on_disk)}"
+        return f"{len(have)} downloaded · {dialogs.human(on_disk)}"
 
     @work
     async def action_filter(self) -> None:
@@ -752,6 +761,7 @@ class Models(App[bool]):
                 dialogs.Info(
                     name,
                     f"{entry.description if entry else 'unknown model'}\n\nNot downloaded. Press Enter or Download to get it.",
+                    link=hugging_face_page(name.partition(":")[0]),
                 )
             )
             return
@@ -761,7 +771,7 @@ class Models(App[bool]):
             f"family   {resolved.family.name}\ncommit   {resolved.revision}\nfile     {resolved.weights or 'safetensors'}\n"
             f"code     {trusted}\nlimits   {limits}\npath     {store.local_path(resolved)}"
         )
-        await self.push_screen_wait(dialogs.Info(canonical(resolved), body))
+        await self.push_screen_wait(dialogs.Info(canonical(resolved), body, link=hugging_face_page(resolved.repo_id)))
 
     @work
     async def action_options(self) -> None:
@@ -954,7 +964,7 @@ def keys_help(accent: str) -> Text:
                 help_text.append(f"  ({command})", style="dim")
             help_text.append("\n")
         help_text.append("\n")
-    help_text.append("★ default  ● loaded  ✓ on disk  ○ available  ·  a dim size is an estimate", style="dim")
+    help_text.append("★ default  ● loaded  ✓ downloaded  ○ available  ·  a dim size is an estimate", style="dim")
     return help_text
 
 
