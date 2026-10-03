@@ -62,6 +62,8 @@ build-backend = "hatchling.build"
 
 [tool.uv]
 package = true
+# Rebuild when the source changes, not only pyproject.toml, so `uv tool install .` picks up edits.
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*" }]
 
 # PyPI's Linux torch wheel drags in the whole CUDA toolkit (several GB). Default Linux to the
 # CPU build; for a GPU box, sync against https://download.pytorch.org/whl/cu130 instead.

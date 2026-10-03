@@ -209,3 +209,24 @@ def test_variants_name_each_quant_and_size_its_download():
         ("Mapika/decider-x-GGUF:Q8_0", 10),
     ]
     assert [v.name for v in store._variants("u/r", "sha", {"weights.bin": 3})] == ["u/r"]
+
+
+def test_search_lists_supported_models_first(monkeypatch):
+    def model(repo, files):
+        return SimpleNamespace(id=repo, downloads=0, siblings=[SimpleNamespace(rfilename=f) for f in files])
+
+    found = [
+        model("u/a-GGUF", ["a.gguf"]),
+        model("u/a-decider", ["decider_config.json"]),
+        model("u/b-GGUF", ["b.gguf"]),
+    ]
+
+    class Api:
+        def model_info(self, repo_id):
+            raise store.RepositoryNotFoundError("missing")
+
+        def list_models(self, **kwargs):
+            return found
+
+    monkeypatch.setattr(store, "HfApi", Api)
+    assert [h.repo_id for h in store.search("a")] == ["u/a-decider", "u/a-GGUF"]

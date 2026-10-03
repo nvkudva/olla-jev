@@ -146,7 +146,7 @@ def _family(repo_id: str, files: list[str]) -> Family | None:
 
 
 def search(query: str, limit: int = 40) -> list[Hit]:
-    """Repos matching every word of `query`, most downloaded first. A repo name or URL finds that repo."""
+    """Repos matching every word of `query`, supported ones first, then most downloaded first. A repo name or URL finds that repo."""
     api = HfApi()
     try:
         info = api.model_info(parse(query).repo_id)
@@ -165,9 +165,7 @@ def search(query: str, limit: int = 40) -> list[Hit]:
         if all(w in m.id.lower() for w in words):
             family = _family(m.id, [s.rfilename for s in m.siblings or []])
             hits.append(Hit(m.id, m.downloads or 0, family.name if family else None))
-            if len(hits) == limit:
-                break
-    return hits
+    return sorted(hits, key=lambda h: h.family is None)[:limit]  # stable: keeps the download order
 
 
 def variants(repo_id: str) -> list[Variant]:

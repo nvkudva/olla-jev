@@ -11,7 +11,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.screen import ModalScreen
-from textual.widgets import DataTable, Footer, Header, Input, Select, Static, TextArea
+from textual.widgets import DataTable, Footer, Header, Input, Rule, Select, Static, TextArea
 
 from .. import client, config, service, store
 from ..catalog import CATALOG
@@ -39,6 +39,7 @@ ModalScreen { align: center middle; background: $background 60%; }
 .wide { width: 100; }
 #repos { height: 12; }
 #variants { height: 8; }
+.wide Rule { margin: 0; color: $primary; }
 """
 
 
@@ -85,6 +86,7 @@ class AddModel(ModalScreen[str | None]):
             yield Static("Add a model from Hugging Face", classes="title")
             yield Input(placeholder="search words, user/repo or a huggingface.co link", id="query")
             yield DataTable(id="repos", cursor_type="row")
+            yield Rule()
             yield DataTable(id="variants", cursor_type="row")
             yield Static("", id="note")
             yield Static("type to search · enter pick · tab switch list · esc cancel", classes="hint")
