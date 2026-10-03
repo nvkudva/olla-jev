@@ -112,14 +112,11 @@ class Models(App[bool]):
         yield Header(icon="")
         yield DataTable(cursor_type="row", zebra_stripes=True)
         yield dialogs.buttons(
-            ("Download", "pull", "primary"),
             ("Ask", "ask", "default"),
             ("Make default", "set_default", "default"),
             ("Info", "info", "default"),
-            ("Unload", "unload", "default"),
-            ("Delete", "remove", "default"),
-            ("Add model…", "add", "default"),
-            ("Serve", "serve", "success"),
+            ("Add model…", "add", "primary"),
+            ("Help", "help", "default"),
             row_id="actions",
         )
         yield Static("", id="status")
@@ -134,10 +131,11 @@ class Models(App[bool]):
         asyncio.get_running_loop().set_default_executor(NoWaitExecutor())
         table = self.query_one(DataTable)
         table.add_column("Disk", width=4)
-        table.add_column("Model", width=46)
+        table.add_column("Model", width=44)
         table.add_column("Size", width=9)
-        table.add_column("Languages / family", width=18)
-        table.add_column("Status")
+        table.add_column("Languages", width=16)
+        table.add_column("Status", width=20)
+        table.add_column("Actions")
         self.reload()
         self.say_idle()
         self.load_quants()
@@ -214,7 +212,8 @@ class Models(App[bool]):
             if row.name in loaded:
                 markers.append("● loaded", style="bold green")
             disk = Text("✓", style="green") if row.name in have else ""
-            table.add_row(disk, row.label, row.size, row.languages, markers, key=row.name)
+            actions = self.row_actions(row.name, row.name in have, row.name in loaded)
+            table.add_row(disk, row.label, row.size, row.languages, markers, actions, key=row.name)
             self.names.append(row.name)
         if keep in self.names:
             table.move_cursor(row=self.names.index(keep))
@@ -222,6 +221,37 @@ class Models(App[bool]):
         self.summary = self.describe(default, loaded, have, server_up)
         if not self.busy:
             self.say_idle()
+
+    @staticmethod
+    def row_actions(name: str, downloaded: bool, loaded: bool) -> Text:
+        """Clickable links for one row: Download before it is on disk, then Serve, Stop and Delete."""
+
+        def link(label: str, action: str, style: str) -> Text:
+            return Text.from_markup(f"[{style}][@click=app.on_row({name!r}, {action!r})] {label} [/][/]")
+
+        if not downloaded:
+            return link("↓ Download", "pull", "bold dodger_blue1")
+        actions = Text()
+        actions.append(link("▶ Serve", "serve_model", "bold green"))
+        actions.append(" ")
+        actions.append(link("■ Stop", "unload", "bold" if loaded else "dim"))
+        actions.append(" ")
+        actions.append(link("✕ Delete", "remove", "red"))
+        return actions
+
+    async def action_on_row(self, name: str, action: str) -> None:
+        """A click on a row's action link: select that row, then run the action as its key would."""
+        if name in self.names:
+            self.query_one(DataTable).move_cursor(row=self.names.index(name))
+        await self.run_action(action)
+
+    def action_serve_model(self) -> None:
+        """Serve the selected model: it becomes the default, then the manager leaves and the server starts."""
+        name = self.selected()
+        if not name or self.refuse_while_busy():
+            return
+        config.update(default_model=canonical_or(name))
+        self.action_serve()
 
     def list_rows(self, have: dict[str, Any]) -> list[Row]:
         """The catalog, each GGUF repo's other quants indented under its last curated entry, then any other

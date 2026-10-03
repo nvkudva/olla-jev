@@ -196,7 +196,7 @@ Run `ollajev <command> --help` for options and an example.
 
 ### Model manager
 
-`ollajev setup` opens one screen for the model commands. Move with the arrow keys or the mouse; the buttons under the list and in every dialog do what these keys do:
+`ollajev setup` opens one screen for the model commands. Move with the arrow keys or the mouse. Each row's Actions column has clickable links: Download for a model not on disk yet, then Serve, Stop and Delete. The buttons under the list and in every dialog do what these keys do:
 
 | Key | Same as | What it does |
 |---|---|---|

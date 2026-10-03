@@ -318,3 +318,23 @@ def test_confirm_buttons_answer_it():
 
     assert asyncio.run(go("#do-yes")) == [True]
     assert asyncio.run(go("#do-no")) == [False]
+
+
+def test_row_action_links_select_their_row_and_act(app):
+    async def go():
+        async with app.run_test(size=(160, 36)) as pilot:
+            target = app.names[3]
+            await app.run_action(f"on_row({target!r}, 'info')")
+            await pilot.pause()
+            return target, app.selected(), type(app.screen).__name__
+
+    target, selected, screen = asyncio.run(go())
+    assert selected == target and screen == "Info"
+
+
+def test_row_actions_offer_download_until_on_disk():
+    def labels(text):
+        return [word for word in text.plain.split() if word.isalpha()]
+
+    assert labels(tui.Models.row_actions("a/b", downloaded=False, loaded=False)) == ["Download"]
+    assert labels(tui.Models.row_actions("a/b", downloaded=True, loaded=True)) == ["Serve", "Stop", "Delete"]
