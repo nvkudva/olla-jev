@@ -27,7 +27,7 @@ class Family(Protocol):
 
 
 def families() -> list[Family]:
-    from . import clef, decider, decision1, intern, julia, kev, laya, openjev
+    from . import clef, decider, decision1, intern, jevk5, julia, kev, laya, onejev, openjev, rlcd, von
 
     found = [
         laya.FAMILY,
@@ -38,6 +38,10 @@ def families() -> list[Family]:
         kev.FAMILY,
         intern.FAMILY,
         decision1.FAMILY,
+        jevk5.FAMILY,
+        onejev.FAMILY,
+        rlcd.FAMILY,
+        von.FAMILY,
     ]
     return [f for f in found if f is not None]
 
