@@ -15,10 +15,10 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import config, store
-from .catalog import CATALOG
-from .manager import canonical, lookup
-from .names import quant_of
+from .. import config, store
+from ..catalog import CATALOG
+from ..manager import canonical, lookup
+from ..names import quant_of
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")

@@ -11,11 +11,13 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.screen import ModalScreen
-from textual.widgets import DataTable, Footer, Header, Input, Select, Static, TextArea
+from textual.widgets import DataTable, Footer, Header, Input, Rule, Select, Static, TextArea
 
-from . import admin, cli, config, run, service, store
-from .catalog import CATALOG
-from .manager import canonical, default_model, lookup
+from .. import client, config, service, store
+from ..catalog import CATALOG
+from ..manager import canonical, canonical_or, default_model, lookup
+from ..server import admin
+from . import repl
 
 log = logging.getLogger(__name__)
 
@@ -34,6 +36,10 @@ ModalScreen { align: center middle; background: $background 60%; }
 .dialog Input, .dialog Select { margin-bottom: 1; }
 .dialog TextArea { height: 6; margin-bottom: 1; }
 #answers { height: auto; max-height: 12; }
+.wide { width: 100; }
+#repos { height: 12; }
+#variants { height: 8; }
+.wide Rule { margin: 0; color: $primary; }
 """
 
 
@@ -52,6 +58,111 @@ class Prompt(ModalScreen[str | None]):
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         self.dismiss(event.value.strip() or None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+def human(size: float, units: tuple[str, ...] = ("B", "KB", "MB", "GB", "TB")) -> str:
+    for unit in units[:-1]:
+        if size < 1000:
+            return f"{size:.0f} {unit}" if unit == units[0] else f"{size:.1f} {unit}"
+        size /= 1000
+    return f"{size:.1f} {units[-1]}"
+
+
+class AddModel(ModalScreen[str | None]):
+    """Search Hugging Face, pick a repo, then pick one of its quants. Returns the name `pull` takes."""
+
+    BINDINGS: ClassVar = [("escape", "cancel", "Cancel")]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.hits: list[store.Hit] = []
+        self.found: dict[str, list[store.Variant]] = {}
+
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="dialog wide"):
+            yield Static("Add a model from Hugging Face", classes="title")
+            yield Input(placeholder="search words, user/repo or a huggingface.co link", id="query")
+            yield DataTable(id="repos", cursor_type="row")
+            yield Rule()
+            yield DataTable(id="variants", cursor_type="row")
+            yield Static("", id="note")
+            yield Static("type to search · enter pick · tab switch list · esc cancel", classes="hint")
+
+    def on_mount(self) -> None:
+        repos = self.query_one("#repos", DataTable)
+        repos.add_column("Model", width=56)
+        repos.add_column("Downloads", width=10)
+        repos.add_column("Support")
+        variants = self.query_one("#variants", DataTable)
+        variants.add_column("Quant", width=40)
+        variants.add_column("Download", width=10)
+
+    def note(self, text: str) -> None:
+        self.query_one("#note", Static).update(text)
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        self.search(event.value.strip(), delay=0.4)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self.search(event.value.strip(), delay=0)
+        self.query_one("#repos", DataTable).focus()
+
+    @work(exclusive=True, group="search")
+    async def search(self, query: str, delay: float) -> None:
+        await asyncio.sleep(delay)
+        repos = self.query_one("#repos", DataTable)
+        if not query:
+            return
+        self.note("Searching…")
+        try:
+            hits = await asyncio.to_thread(store.search, query)
+        except Exception as exc:
+            log.exception("search failed")
+            self.note(f"error: {exc}")
+            return
+        self.hits = hits
+        repos.clear()
+        self.query_one("#variants", DataTable).clear()
+        for h in hits:
+            support = f"✓ {h.family}" if h.family else "✗ unsupported"
+            repos.add_row(h.repo_id, human(h.downloads, ("", "k", "M", "B")).replace(" ", ""), support, key=h.repo_id)
+        self.note("" if hits else "No models found")
+
+    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        if event.data_table.id == "repos" and event.row_key.value:
+            self.show(event.row_key.value)
+
+    @work(exclusive=True, group="variants")
+    async def show(self, repo_id: str) -> None:
+        await asyncio.sleep(0.2)
+        table = self.query_one("#variants", DataTable)
+        table.clear()
+        if repo_id not in self.found:
+            self.note(f"Reading {repo_id} …")
+            try:
+                self.found[repo_id] = await asyncio.to_thread(store.variants, repo_id)
+            except Exception as exc:
+                log.exception("could not read %s", repo_id)
+                self.note(f"error: {exc}")
+                return
+        for v in self.found[repo_id]:
+            table.add_row(v.label, human(v.size), key=v.name)
+        hit = next((h for h in self.hits if h.repo_id == repo_id), None)
+        self.note("" if hit and hit.family else "ollajev has no adapter for this model; it cannot be added")
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        event.stop()  # the manager behind this dialog downloads on its own row selection
+        if event.data_table.id == "repos":
+            self.query_one("#variants", DataTable).focus()
+            return
+        repo_id = event.row_key.value.partition(":")[0] if event.row_key.value else ""
+        if not any(h.repo_id == repo_id and h.family for h in self.hits):
+            self.notify("This model is not supported", severity="warning")
+            return
+        self.dismiss(event.row_key.value)
 
     def action_cancel(self) -> None:
         self.dismiss(None)
@@ -174,7 +285,7 @@ class Ask(ModalScreen[None]):
         questions: dict[str, Any] = {}
         for line in self.query_one("#questions", TextArea).text.splitlines():
             if line.strip():
-                parsed = run.parse_question(line.strip())
+                parsed = repl.parse_question(line.strip())
                 if parsed is None:
                     self.query_one("#answers", Static).update(f"not a question: {line.strip()}")
                     return
@@ -188,7 +299,7 @@ class Ask(ModalScreen[None]):
     @work(thread=True, exclusive=True)
     def send(self, state: str, questions: dict[str, Any]) -> None:
         try:
-            text = "\n".join(run.format_answers(self.ask(state, questions)["answers"]))
+            text = "\n".join(repl.format_answers(self.ask(state, questions)["answers"]))
         except Exception as exc:
             log.exception("ask failed")
             text = f"error: {exc}"
@@ -243,16 +354,16 @@ class Models(App[bool]):
         self.query_one("#status", Static).update(text)
 
     def loaded(self) -> set[str]:
-        if cli.server_running():
+        if client.server_running():
             try:
-                return {m["name"] for m in cli.call("GET", "/api/ps")["models"]}
+                return {m["name"] for m in client.call("GET", "/api/ps")["models"]}
             except SystemExit:
                 return set()
         return {self.local[0]} if self.local else set()
 
     def reload(self) -> None:
         have = {m["name"]: m for m in admin.tags()}
-        default = cli.canonical_or(default_model())
+        default = canonical_or(default_model())
         loaded = self.loaded()
         rows = [(e.name, e.name in have, f"{e.size_gb:.1f} GB", e.languages) for e in CATALOG]
         listed = {r[0] for r in rows}
@@ -271,8 +382,8 @@ class Models(App[bool]):
             self.names.append(name)
         if keep in self.names:
             table.move_cursor(row=self.names.index(keep))
-        running = cli.server_running()
-        self.sub_title = f"server running at {cli.server_url()}" if running else "server not running"
+        running = client.server_running()
+        self.sub_title = f"server running at {client.server_url()}" if running else "server not running"
 
     def selected(self) -> str | None:
         table = self.query_one(DataTable)
@@ -290,7 +401,7 @@ class Models(App[bool]):
         if self.local and self.local[0] != model:
             self.release()
         if self.local is None:
-            ask, release = run.connect(model, lambda text: None)
+            ask, release = repl.connect(model, lambda text: None)
             self.local = (model, ask, release)
         return self.local[1]
 
@@ -367,7 +478,7 @@ class Models(App[bool]):
 
     @work
     async def action_add(self) -> None:
-        name = await self.push_screen_wait(Prompt("Add a model by Hugging Face repo", "user/repo or user/repo:Q4_K_M"))
+        name = await self.push_screen_wait(AddModel())
         if name:
 
             async def pull() -> None:
@@ -392,8 +503,8 @@ class Models(App[bool]):
         name = self.selected()
         if not name:
             return
-        if cli.server_running():
-            self.notify(await asyncio.to_thread(lambda: cli.call("POST", "/api/stop", {"model": name})["status"]))
+        if client.server_running():
+            self.notify(await asyncio.to_thread(lambda: client.call("POST", "/api/stop", {"model": name})["status"]))
         elif self.local and self.local[0] == name:
             await asyncio.to_thread(self.release)
             self.notify("unloaded")
@@ -412,8 +523,8 @@ class Models(App[bool]):
         async def remove() -> None:
             if self.local and self.local[0] == name:
                 await asyncio.to_thread(self.release)
-            if cli.server_running():
-                await asyncio.to_thread(lambda: cli.call("DELETE", "/api/delete", {"model": name}))
+            if client.server_running():
+                await asyncio.to_thread(lambda: client.call("DELETE", "/api/delete", {"model": name}))
             else:
                 await asyncio.to_thread(lambda: store.remove(store.resolve(lookup(name), online=False)))
             self.notify(f"Deleted {name}")

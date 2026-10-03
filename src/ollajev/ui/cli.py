@@ -7,7 +7,6 @@ setup screen to pick a model.
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import logging.handlers
 import os
@@ -19,52 +18,9 @@ import urllib.error
 import urllib.request
 import webbrowser
 from importlib.metadata import version
-from typing import Any
 
-from . import config, store
-from .manager import canonical, default_model, lookup
-
-# ---- talking to a running server ------------------------------------------------------------------
-
-
-def server_url() -> str:
-    """OLLAJEV_HOST when set, else the address the last `serve` bound, else the default."""
-    if os.environ.get("OLLAJEV_HOST"):
-        host, port = config.host()
-        return f"http://{url_host(host)}:{port}"
-    return config.load().get("server_url") or f"http://127.0.0.1:{config.DEFAULT_PORT}"
-
-
-def auth_headers() -> dict[str, str]:
-    headers = {"content-type": "application/json"}
-    if key := config.api_key():
-        headers["authorization"] = f"Bearer {key}"
-    return headers
-
-
-def call(method: str, path: str, body: dict[str, Any] | None = None, timeout: float = 600) -> Any:
-    data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(server_url() + path, data=data, method=method, headers=auth_headers())
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read() or b"null")
-    except urllib.error.HTTPError as exc:
-        payload = json.loads(exc.read() or b"{}")
-        raise SystemExit(f"error: {payload.get('error') or payload.get('detail') or exc}") from None
-
-
-def server_running() -> bool:
-    try:
-        urllib.request.urlopen(server_url() + "/", timeout=0.5).close()
-        return True
-    except (urllib.error.URLError, OSError):
-        return False
-
-
-def need_server() -> None:
-    if not server_running():
-        raise SystemExit(f"could not connect to ollajev at {server_url()}; start it with: ollajev serve")
-
+from .. import client, config, store
+from ..manager import canonical, canonical_or, default_model, lookup
 
 # ---- model management -----------------------------------------------------------------------------
 
@@ -106,7 +62,7 @@ def cmd_pull(args: argparse.Namespace) -> None:
 
 
 def cmd_list(args: argparse.Namespace) -> None:
-    from .admin import tags
+    from ..server.admin import tags
 
     rows = tags()
     if not rows:
@@ -120,13 +76,6 @@ def cmd_list(args: argparse.Namespace) -> None:
         print(
             f"{m['name']:<{width}}  {m['details']['family']:<16} {m['size'] / 1e9:>6.2f} GB  {m['modified_at'][:10]}{mark}"
         )
-
-
-def canonical_or(name: str) -> str:
-    try:
-        return canonical(store.resolve(name, online=False))
-    except (LookupError, ValueError):
-        return name
 
 
 def cmd_show(args: argparse.Namespace) -> None:
@@ -150,8 +99,8 @@ def cmd_show(args: argparse.Namespace) -> None:
 
 def cmd_rm(args: argparse.Namespace) -> None:
     for name in args.model:
-        if server_running():
-            call("DELETE", "/api/delete", {"model": name})
+        if client.server_running():
+            client.call("DELETE", "/api/delete", {"model": name})
         else:
             with config.edit() as data:
                 removed = data.get("aliases", {}).pop(name, None)
@@ -168,8 +117,8 @@ def cmd_cp(args: argparse.Namespace) -> None:
 
 
 def cmd_ps(args: argparse.Namespace) -> None:
-    need_server()
-    rows = call("GET", "/api/ps")["models"]
+    client.need_server()
+    rows = client.call("GET", "/api/ps")["models"]
     if not rows:
         print("no models loaded")
         return
@@ -181,8 +130,8 @@ def cmd_ps(args: argparse.Namespace) -> None:
 
 
 def cmd_stop(args: argparse.Namespace) -> None:
-    need_server()
-    print(call("POST", "/api/stop", {"model": args.model})["status"])
+    client.need_server()
+    print(client.call("POST", "/api/stop", {"model": args.model})["status"])
 
 
 # ---- serve ------------------------------------------------------------------------------------------
@@ -223,15 +172,10 @@ def configure_logging(path: str) -> None:
     root.handlers = [file, console]
 
 
-def url_host(host: str) -> str:
-    probe = "127.0.0.1" if host in ("0.0.0.0", "::", "") else host
-    return f"[{probe}]" if ":" in probe else probe
-
-
 def cmd_serve(args: argparse.Namespace) -> None:
     import uvicorn
 
-    from . import api
+    from ..server import api
 
     if getattr(args, "setup", False) or (
         "default_model" not in config.load() and sys.stdin.isatty() and not args.model
@@ -259,7 +203,7 @@ def cmd_serve(args: argparse.Namespace) -> None:
     args.log_file = args.log_file or str(config.log_dir() / "server.log")
     configure_logging(args.log_file)
     sock, port = bind(host, port, scan=not explicit)
-    base = f"http://{url_host(host)}:{port}"
+    base = f"http://{client.url_host(host)}:{port}"
     config.update(server_url=base)
 
     try:
@@ -325,7 +269,7 @@ def cmd_setup(args: argparse.Namespace) -> None:
 
 
 def cmd_run(args: argparse.Namespace) -> None:
-    from .run import run
+    from .repl import run
 
     run(args.model)
 
@@ -348,7 +292,7 @@ environment:
 
 
 def cmd_service(args: argparse.Namespace) -> None:
-    from . import service
+    from .. import service
 
     if args.action == "install":
         print(service.install())

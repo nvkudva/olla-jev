@@ -20,7 +20,7 @@ class _Laya:
         return {"max_tokens": CONTEXT.get(r.repo_id, 1024)}
 
     def matches(self, repo_id: str, files: list[str]) -> bool:
-        return "rl_agent_config.json" in files
+        return "rl_agent_config.json" in files and "model.safetensors" in files
 
     def allow_patterns(self, r) -> list[str]:
         return ALLOW

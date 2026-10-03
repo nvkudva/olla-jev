@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from ollajev import cli, config, service
+from ollajev import config, service
+from ollajev.ui import cli
 
 
 @pytest.mark.parametrize(

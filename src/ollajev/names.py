@@ -1,6 +1,7 @@
 """Model names, Ollama style: `<user>/<repo>`, `<user>/<repo>:<quant>` or `<user>/<repo>:<file.gguf>`.
 
-An `hf.co/` or `huggingface.co/` prefix is accepted, so names copied from an Ollama command work.
+An `hf.co/` or `huggingface.co/` prefix is accepted, so names copied from an Ollama command work,
+and so are browser URLs of a repo or one of its files (`.../tree/main`, `.../blob/main/x.gguf`).
 The quant is matched case-insensitively against the repo's file names.
 """
 
@@ -20,6 +21,7 @@ PREFIXES = (
 # Ollama's order when a repo has no Q4_K_M: the first quant found, best compromise first.
 QUANT_PREFERENCE = ["Q4_K_M", "Q4_K_S", "Q4_0", "IQ4_XS", "Q5_K_M", "Q5_K_S", "Q6_K", "Q8_0"]
 _REPO = re.compile(r"^[\w.-]+/[\w.-]+$")
+_URL_PATH = re.compile(r"^([^/]+/[^/]+)/(?:blob|resolve|tree)/[^/]+(?:/(.*))?$")
 
 
 @dataclass(frozen=True)
@@ -36,7 +38,10 @@ def parse(name: str) -> Ref:
     text = name.strip()
     for prefix in PREFIXES:
         if text.lower().startswith(prefix):
-            text = text[len(prefix) :]
+            text = text[len(prefix) :].split("?", 1)[0].split("#", 1)[0].rstrip("/")
+            if m := _URL_PATH.match(text):
+                file = (m.group(2) or "").rsplit("/", 1)[-1]
+                text = f"{m.group(1)}:{file}" if file.lower().endswith(".gguf") else m.group(1)
             break
     repo_id, _, tag = text.partition(":")
     if not _REPO.match(repo_id) or ".." in repo_id or any(part.strip(".") == "" for part in repo_id.split("/")):
@@ -45,8 +50,8 @@ def parse(name: str) -> Ref:
 
 
 def quant_of(filename: str) -> str | None:
-    """`decider-4b-v2.1-Q4_K_M.gguf` -> `Q4_K_M`."""
-    m = re.search(r"[.-]((?:I?Q\d[\w]*)|BF16|F16|F32)\.gguf$", filename, re.IGNORECASE)
+    """`decider-4b-v2.1-Q4_K_M.gguf` or `laya_english_ud_q4_k_m.gguf` -> `Q4_K_M`."""
+    m = re.search(r"[._-]((?:I?Q\d[\w]*)|BF16|F16|F32)\.gguf$", filename, re.IGNORECASE)
     return m.group(1).upper() if m else None
 
 
