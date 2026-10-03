@@ -199,13 +199,22 @@ def preload_name(model: str) -> str | None:
     return name
 
 
+def exit_now() -> None:
+    """End the process without waiting for the model manager's background threads. Python would otherwise join
+    each pending Hugging Face request or download first, which is what made quitting slow. Settings are already
+    saved, and a cut-off download resumes on the next pull."""
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
+
+
 def cmd_serve(args: argparse.Namespace) -> None:
     first_run = "default_model" not in config.load() and sys.stdin.isatty() and not args.model
     if getattr(args, "setup", False) or first_run:
         from .tui import manage
 
         if not manage():
-            return
+            exit_now()
     import uvicorn
 
     from ..server import api

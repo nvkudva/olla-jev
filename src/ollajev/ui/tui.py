@@ -387,7 +387,9 @@ class Models(App[bool]):
         self.exit(True)
 
     def action_quit_app(self) -> None:
-        self.release()
+        # Stop a download at its next update. A loaded model is not unloaded: the process is about to end,
+        # which frees it at once, while unloading it here would freeze the screen first.
+        self.cancel.set()
         self.exit(False)
 
     async def action_quit(self) -> None:
