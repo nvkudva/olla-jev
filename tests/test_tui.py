@@ -45,7 +45,7 @@ def test_quit_keys_return_false(app, key):
     assert app.return_value is False
 
 
-@pytest.mark.parametrize(("key", "screen"), [("o", "Options"), ("n", "AddModel"), ("a", "Prompt"), ("i", "Info")])
+@pytest.mark.parametrize(("key", "screen"), [("o", "Options"), ("n", "AddModel"), ("a", "Prompt"), ("i", "Info"), ("question_mark", "Info")])
 def test_keys_open_their_dialog_and_escape_closes_it(app, key, screen):
     assert drive(app, [key]) == [screen]
     assert drive(tui.Models(), [key, "escape"]) == []

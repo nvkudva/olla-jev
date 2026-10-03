@@ -211,6 +211,9 @@ Run `ollajev <command> --help` for options and an example.
 | `o` | | device, address and port for the server |
 | `b` | `service` | install or remove the background service |
 | `s` | `serve` | start the server and leave the manager |
+| `e` | | the last error in full |
+| Esc | | cancel a download |
+| `?` | | list every key |
 | `q` | | quit |
 
 The table marks downloaded models (✓), the default and the loaded ones. The header shows whether a

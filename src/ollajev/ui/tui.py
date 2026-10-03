@@ -43,20 +43,22 @@ ModalScreen { align: center middle; background: $background 60%; }
 class Models(App[bool]):
     TITLE = "ollajev"
     CSS = CSS
+    # The footer shows the everyday keys; ? lists them all, so the footer fits a narrow terminal.
     BINDINGS: ClassVar = [
         Binding("p", "pull", "Pull"),
         Binding("r", "ask", "Ask"),
-        Binding("u", "unload", "Unload"),
-        Binding("x", "remove", "Remove"),
-        Binding("a", "alias", "Alias"),
-        Binding("i", "info", "Info"),
         Binding("n", "add", "Add"),
-        Binding("o", "options", "Options"),
-        Binding("b", "service", "Service"),
+        Binding("x", "remove", "Remove"),
         Binding("s", "serve", "Serve"),
-        Binding("e", "last_error", "Error", show=False),
-        Binding("escape", "cancel_job", "Cancel"),
+        Binding("question_mark", "help", "Help"),
         Binding("q", "quit_app", "Quit"),
+        Binding("u", "unload", "Unload", show=False),
+        Binding("a", "alias", "Alias", show=False),
+        Binding("i", "info", "Info", show=False),
+        Binding("o", "options", "Options", show=False),
+        Binding("b", "service", "Service", show=False),
+        Binding("e", "last_error", "Error", show=False),
+        Binding("escape", "cancel_job", "Cancel", show=False),
     ]
 
     def __init__(self) -> None:
@@ -109,6 +111,9 @@ class Models(App[bool]):
             self.say(f"! {first_line}  (e for details)")
         else:
             self.say("Enter downloads a model and makes it the default. Press s to serve it.")
+
+    def action_help(self) -> None:
+        self.push_screen(dialogs.Info("Keys", KEYS_HELP))
 
     def action_last_error(self) -> None:
         if self.last_error:
@@ -419,6 +424,23 @@ class Models(App[bool]):
     async def action_quit(self) -> None:
         """ctrl+q: the same as q."""
         self.action_quit_app()
+
+
+KEYS_HELP = """\
+enter   download if needed, make it the default   (pull + default)
+p       download only                              (pull)
+r       ask the model questions                    (run)
+n       add any Hugging Face repo by name          (pull)
+x       delete the download                        (rm)
+u       unload it from memory                      (stop)
+a       give it a short name                       (cp)
+i       family, commit, limits, path               (show)
+o       device, address and port for the server
+b       install or remove the background service   (service)
+s       start the server and leave the manager     (serve)
+e       the last error in full
+esc     cancel a download
+q       quit"""
 
 
 def manage() -> bool:
