@@ -79,6 +79,11 @@ def human(size: float, units: tuple[str, ...] = ("B", "KB", "MB", "GB", "TB")) -
     return f"{size:.1f} {units[-1]}"
 
 
+def count(value: int) -> str:
+    """A download count as Hugging Face writes it: 85k, 2.6M, 308M."""
+    return human(value, ("", "k", "M", "B")).replace(" ", "")
+
+
 class AddModel(Clickable, ModalScreen[str | None]):
     """Search Hugging Face and list every quant of every matching repo in one table. Returns the name `pull`
     takes."""
@@ -158,7 +163,7 @@ class AddModel(Clickable, ModalScreen[str | None]):
         self.supported = set()
         for hit in hits:
             support = f"✓ {hit.family}" if hit.family else "✗ unsupported"
-            downloads = human(hit.downloads, ("", "k", "M", "B")).replace(" ", "")
+            downloads = count(hit.downloads)
             for variant in quants.get(hit.repo_id, []):
                 size = human(variant.size) if hit.repo_id in sized else "…"
                 table.add_row(variant.name, size, downloads, support, key=variant.name)

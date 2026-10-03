@@ -278,6 +278,16 @@ def _repo_files(repo_id: str) -> tuple[str, ...]:
     return tuple(s.rfilename for s in info.siblings or [])
 
 
+@functools.lru_cache(maxsize=256)
+def downloads(repo_id: str) -> int | None:
+    """A repo's download count on Hugging Face, or None when it does not answer within 10 s."""
+    try:
+        info = HfApi().model_info(repo_id, expand=["downloads"], timeout=10)
+    except (RepositoryNotFoundError, httpx.HTTPError):
+        return None
+    return info.downloads or 0
+
+
 def search(query: str, limit: int = 40) -> list[Hit]:
     """Repos matching every word of `query`, supported ones first, then most downloaded first. Only the 100 most
     downloaded matches are checked for support. A repo name or URL finds that repo."""

@@ -168,6 +168,7 @@ class Row(NamedTuple):
     label: Text  # what the Model column shows
     size: str
     estimated: bool  # the size is the catalog's or Hugging Face's figure, not the files on disk
+    downloads: str  # Hugging Face download count, empty until it is read or when it cannot be
     languages: str  # the catalog's languages, or the family of a model outside the catalog
 
 
@@ -223,6 +224,7 @@ class Models(App[bool]):
         # One load at a time: two Ask dialogs opened in a row must not hold two models in memory.
         self.load_lock = threading.Lock()
         self.quants: dict[str, list[store.Variant]] = {}  # catalog GGUF repo -> all its quants on Hugging Face
+        self.totals: dict[str, int] = {}  # repo -> its download count on Hugging Face
         self.server: subprocess.Popen[bytes] | None = None  # a server this window started, if any
         self.server_model: str | None = None  # what that server was started with
         self.snapshot_cache: tuple[dict[str, Any], str, bool, set[str]] | None = None  # to redraw on a theme change
@@ -263,6 +265,7 @@ class Models(App[bool]):
         self.reload()
         self.say_idle()
         self.load_quants()
+        self.load_downloads()
         self.set_interval(3, self.auto_refresh)
 
     def on_theme_change(self, theme: Any) -> None:
@@ -293,6 +296,14 @@ class Models(App[bool]):
         found = await asyncio.gather(*(asyncio.to_thread(dialogs.variants, repo) for repo in repos))
         self.quants = {repo: vs for repo, vs in zip(repos, found, strict=True) if vs}
         self.fetching_quants = False
+        self.reload()
+
+    @work(group="downloads")
+    async def load_downloads(self) -> None:
+        """Fill the Downloads column with each listed repo's count on Hugging Face. Offline, the column stays empty."""
+        repos = list(dict.fromkeys(row.partition(":")[0] for row in self.names or [e.name for e in CATALOG]))
+        found = await asyncio.gather(*(asyncio.to_thread(store.downloads, repo) for repo in repos))
+        self.totals = {repo: n for repo, n in zip(repos, found, strict=True) if n is not None}
         self.reload()
 
     def say(self, text: str, kind: str = "busy") -> None:
@@ -360,6 +371,7 @@ class Models(App[bool]):
         table.add_column("Status", width=12, key="state")
         table.add_column("Model", width=model_width, key="model")
         table.add_column(Text("Size", justify="right"), width=8, key="size")
+        table.add_column(Text("Downloads", justify="right"), width=10, key="downloads")
         table.add_column("Lang", width=6, key="lang")
         table.add_column("Actions", key="actions")
         self.names, self.sizes = [], {}
@@ -367,11 +379,13 @@ class Models(App[bool]):
             on_disk, is_loaded = row.name in have, row.name in loaded
             self.sizes[row.name] = row.size
             size = Text(row.size, justify="right", style="dim italic" if row.estimated else "")
+            downloads = Text(row.downloads, justify="right", style="dim")
             language = Text(LANGUAGE_SHORT.get(row.languages, row.languages), style="dim")
             table.add_row(
                 self.state_pills(row.name == default, is_loaded, on_disk),
                 row.label,
                 size,
+                downloads,
                 language,
                 self.row_actions(row.name, on_disk, is_loaded),
                 key=row.name,
@@ -421,7 +435,7 @@ class Models(App[bool]):
         else:
             # Two slots wide, where Serve and Delete sit on a downloaded row, so Info lines up below Info.
             row = [button("↓ Download", "pull", self.colour("accent"), slots=2)]
-        row.append(button("≡ Info", "info", self.colour("foreground")))
+        row.append(button("ⓘ Info", "info", self.colour("foreground")))
         return Text(ROW_BUTTON_GAP).join(row)
 
     async def action_on_row(self, name: str, action: str) -> None:
@@ -448,7 +462,7 @@ class Models(App[bool]):
             if quant:
                 label.append(f":{quant}", style="dim")
             size, estimated = self.size_of(entry.name, have, entry.size_gb * 1e9)
-            rows.append(Row(entry.name, label, size, estimated, entry.languages))
+            rows.append(Row(entry.name, label, size, estimated, self.count_of(entry.name), entry.languages))
             later_entries = CATALOG[index + 1 :]
             last_of_repo = all(other.name.partition(":")[0] != repo for other in later_entries)
             if not last_of_repo:
@@ -458,12 +472,26 @@ class Models(App[bool]):
                 branch = "└" if position == len(others) - 1 else "├"
                 label = Text(f"  {branch} {variant.name.partition(':')[2] or variant.name}", style="dim")
                 size, estimated = self.size_of(variant.name, have, variant.size)
-                rows.append(Row(variant.name, label, size, estimated, entry.languages))
+                rows.append(Row(variant.name, label, size, estimated, self.count_of(variant.name), entry.languages))
         listed = {row.name for row in rows}
         for name, model in have.items():
             if name not in listed:
-                rows.append(Row(name, Text(name), dialogs.human(model["size"]), False, model["details"]["family"]))
+                rows.append(
+                    Row(
+                        name,
+                        Text(name),
+                        dialogs.human(model["size"]),
+                        False,
+                        self.count_of(name),
+                        model["details"]["family"],
+                    )
+                )
         return rows
+
+    def count_of(self, name: str) -> str:
+        """The Downloads cell for a model name: empty until read, or when Hugging Face has no count for it."""
+        total = self.totals.get(name.partition(":")[0])
+        return dialogs.count(total) if total is not None else ""
 
     @staticmethod
     def size_of(name: str, have: dict[str, Any], estimate: float) -> tuple[str, bool]:
