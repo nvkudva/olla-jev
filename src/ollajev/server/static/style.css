@@ -140,7 +140,12 @@ select { width: auto; }
 .bar-inner { max-width: 1680px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 20px 32px; align-items: baseline; }
 .bar-head { flex: 1 1 720px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 .bar-title { display: flex; align-items: center; gap: 14px; }
-.lockup { flex: none; width: 116px; height: auto; color: var(--ink); }
+.lockup {
+  flex: none; display: inline-flex; align-items: center; gap: 8px; color: var(--ink);
+  font-weight: 600; font-size: 24px; letter-spacing: 0.01em;
+
+  & img { border-radius: 8px; }
+}
 .wordmark { font-weight: 600; font-size: 19px; letter-spacing: -0.015em; margin: 0; }
 .bar-copy { min-width: 0; }
 
@@ -151,16 +156,21 @@ select { width: auto; }
   & b { font-family: var(--mono); font-weight: 400; color: var(--ink); }
 }
 
-.bar-aside { margin-left: auto; }
+.bar-aside { margin-left: auto; flex: none; align-self: center; }
 
+/* Two rows of three: model, limits, API; then last run and theme. Values longer than their column are cut
+   with an ellipsis, so a long model name or a new token count never reflows the header. */
 .readout {
-  display: flex; gap: 22px; margin: 0; align-items: flex-start;
+  display: grid; grid-template-columns: 30ch 32ch 16ch; gap: 8px 22px; margin: 0;
 
-  & div { display: flex; flex-direction: column; gap: 1px; }
+  & div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
   & dt { color: var(--muted); font-size: 11px; }
-  & dd { margin: 0; font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+  & dd {
+    margin: 0; font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
   & dt label { font: inherit; color: inherit; }
-  & select { font-family: var(--mono); font-size: 12px; padding: 1px 6px; max-width: 26ch; }
+  & select { font-family: var(--mono); font-size: 12px; padding: 1px 6px; width: 100%; }
 }
 
 .theme-toggle { font: 400 11px var(--mono); padding: 2px 7px; background: transparent; color: var(--muted); border: 1px solid var(--rule); border-radius: 2px; }
@@ -411,7 +421,8 @@ footer a { color: var(--signal); }
   main { grid-template-columns: minmax(0, 1fr); }
   .shell { height: auto; min-height: 100%; }
   .panel { height: auto; min-height: 58vh; }
-  .readout { flex-wrap: wrap; gap: 10px 22px; }
+  .bar-aside { margin-left: 0; width: 100%; }
+  .readout { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 /* Phone widths: the panel head, turn head and answer foot wrap instead of clipping. */
@@ -419,6 +430,7 @@ footer a { color: var(--signal); }
   main { padding: 12px; gap: 12px; }
   .bar-title { flex-wrap: wrap; gap: 6px 14px; }
   .wordmark { font-size: 16px; }
+  .readout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .panel-head { flex-wrap: wrap; }
   .head-tools { flex-wrap: wrap; gap: 8px; }
   .turn .turn-head { flex-wrap: wrap; }

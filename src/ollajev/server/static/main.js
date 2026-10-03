@@ -466,7 +466,6 @@ function turnMarkup(turn, index) {
 
 function showReadout(turn) {
   if (!turn.data) return;
-  $("#r-model").textContent = turn.data.model;
   const tokens = turn.data.usage?.input_tokens;
   $("#r-tokens").textContent = tokens != null ? `${tokens} tok` : "—";
 }
@@ -590,7 +589,7 @@ function limitsText(l) {
 function showModel() {
   const m = models.find((x) => x.name === modelSel.value);
   limits = m?.limits ?? {};
-  $("#r-limits").textContent = limitsText(limits);
+  $("#r-limits").textContent = $("#r-limits").title = limitsText(limits);
   const repo = modelSel.value.split(":")[0];
   const link = $("#model-link");
   link.href = `https://huggingface.co/${repo}`;
