@@ -348,7 +348,9 @@ class Models(App[bool]):
             return
         if not self.downloaded(name):
             size = self.sizes.get(name, "an unknown size")
-            question = dialogs.Confirm(f"Download {name}?", f"It is {size}. It becomes the default model.")
+            question = dialogs.Confirm(
+                f"Download {name}?", f"It is {size}. It becomes the default model.", default=True
+            )
             if not await self.push_screen_wait(question):
                 return
 
@@ -448,10 +450,19 @@ class Models(App[bool]):
         if not name:
             return
         short = await self.push_screen_wait(dialogs.Prompt(f"Short name for {name}", "julia"))
-        if short:
-            with config.edit() as data:
-                data.setdefault("aliases", {})[short] = name
-            self.notify(f"'{short}' now means {name}")
+        if not short:
+            return
+        if any(char.isspace() for char in short) or short in self.names:
+            self.notify(f"'{short}' cannot be a short name: no spaces, and not a model's own name", severity="error")
+            return
+        current = config.load().get("aliases", {}).get(short)
+        if current and current != name:
+            replace = dialogs.Confirm(f"Replace '{short}'?", f"It means {current} now.")
+            if not await self.push_screen_wait(replace):
+                return
+        with config.edit() as data:
+            data.setdefault("aliases", {})[short] = name
+        self.notify(f"'{short}' now means {name}")
 
     @work
     async def action_info(self) -> None:
@@ -492,7 +503,7 @@ class Models(App[bool]):
                 if await self.push_screen_wait(dialogs.Confirm("Background service", "Stop and remove it?")):
                     self.notify(await asyncio.to_thread(service.uninstall))
             elif await self.push_screen_wait(
-                dialogs.Confirm("Background service", "Run ollajev in the background at login?")
+                dialogs.Confirm("Background service", "Run ollajev in the background at login?", default=True)
             ):
                 self.notify(await asyncio.to_thread(service.install))
         except SystemExit as exc:

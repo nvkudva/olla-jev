@@ -45,7 +45,9 @@ def test_quit_keys_return_false(app, key):
     assert app.return_value is False
 
 
-@pytest.mark.parametrize(("key", "screen"), [("o", "Options"), ("n", "AddModel"), ("a", "Prompt"), ("i", "Info"), ("question_mark", "Info")])
+@pytest.mark.parametrize(
+    ("key", "screen"), [("o", "Options"), ("n", "AddModel"), ("a", "Prompt"), ("i", "Info"), ("question_mark", "Info")]
+)
 def test_keys_open_their_dialog_and_escape_closes_it(app, key, screen):
     assert drive(app, [key]) == [screen]
     assert drive(tui.Models(), [key, "escape"]) == []
@@ -230,3 +232,22 @@ def test_auto_refresh_picks_up_changes_made_elsewhere(app):
             return str(app.query_one("#status").render())
 
     assert "default someone/else" in asyncio.run(go())
+
+
+def test_enter_in_a_confirm_takes_its_default():
+    async def go(default):
+        answers = []
+
+        class Host(tui.App):
+            def on_mount(self):
+                self.push_screen(tui.dialogs.Confirm("t", "b", default=default), answers.append)
+
+        app = Host()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+        return answers
+
+    assert asyncio.run(go(True)) == [True]
+    assert asyncio.run(go(False)) == [False]

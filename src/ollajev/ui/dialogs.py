@@ -129,17 +129,23 @@ def variants(repo_id: str) -> list[store.Variant]:
 
 
 class Confirm(ModalScreen[bool]):
-    BINDINGS: ClassVar = [("y", "yes", "Yes"), ("n,escape", "no", "No")]
+    """Yes or no. Enter picks `default`: yes for harmless steps, no for anything that deletes or discards."""
 
-    def __init__(self, title: str, body: str) -> None:
+    BINDINGS: ClassVar = [("y", "yes", "Yes"), ("n,escape", "no", "No"), ("enter", "default", "Default")]
+
+    def __init__(self, title: str, body: str, default: bool = False) -> None:
         super().__init__()
-        self.heading, self.body = title, body
+        self.heading, self.body, self.default = title, body, default
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog"):
             yield Static(self.heading, classes="title")
             yield Static(self.body)
-            yield Static("y yes · n no", classes="hint")
+            hint = "y yes · n no · enter yes" if self.default else "y yes · n no · enter no"
+            yield Static(hint, classes="hint")
+
+    def action_default(self) -> None:
+        self.dismiss(self.default)
 
     def action_yes(self) -> None:
         self.dismiss(True)
