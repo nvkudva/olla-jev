@@ -30,7 +30,7 @@
 - [x] Implement Decision-1.0 adapter for Kai-0.6B and Lex-0.6B
 - [x] Add decider-0.8b, decider-2b, kev-0.5b, kev-0.6b, kev-0.8b to the catalog
 - [ ] Support larger models (decider-4b+, kev-4b+, Open-Jev, Intern-Decision-2B/4B, Decision-1.0 Sol/Nox/Lux, JEV-9B, NeoHorse, GLiNER2.5-Decide-1B)
-- [ ] Phase 2: free-memory check before loading a model, with a clear error
+- [x] Phase 2: free-memory check before loading a model, with a clear error
 - [ ] Phase 2: GLiNER2.5-Decide adapter with a confidence policy for label-only output
 - [ ] Phase 2: OpenThai-SystemOne adapter
 - [ ] Phase 2: Bespoke-Nimble-9B adapter (LoRA on Qwen3.5-9B, ~18 GB; schema enum fields mapped to Jev questions; Mac via MLX loader)

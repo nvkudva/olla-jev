@@ -5,10 +5,13 @@ from __future__ import annotations
 import contextlib
 import gc
 import logging
+import os
 import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
+
+import psutil
 
 from . import config, names, store
 from .adapters import pick_device
@@ -27,6 +30,31 @@ class NotDownloaded(LookupError):
 
 class NotTrusted(PermissionError):
     pass
+
+
+class NotEnoughMemory(MemoryError):
+    pass
+
+
+WEIGHT_SUFFIXES = (".safetensors", ".gguf", ".onnx", ".onnx_data", ".data", ".bin", ".pt")
+MEMORY_HEADROOM = 1.1  # activations and runtime buffers on top of the weights
+
+
+def weights_size(path: str) -> int:
+    return sum(
+        os.path.getsize(os.path.join(root, f))
+        for root, _, files in os.walk(path)
+        for f in files
+        if f.endswith(WEIGHT_SUFFIXES)
+    )
+
+
+def free_memory(device: str) -> int:
+    if device.startswith("cuda"):
+        import torch
+
+        return torch.cuda.mem_get_info()[0]
+    return psutil.virtual_memory().available
 
 
 def canonical(r: store.Resolved) -> str:
@@ -104,6 +132,12 @@ class Manager:
                 victim = min(self._slots.values(), key=lambda s: s.expires).name
             self.unload(victim)
         device = pick_device(config.device())
+        need, free = int(weights_size(path) * MEMORY_HEADROOM), free_memory(device)
+        if need > free:
+            raise NotEnoughMemory(
+                f"{key} needs about {need / 2**30:.1f} GiB but only {free / 2**30:.1f} GiB is free on {device}; "
+                "stop a loaded model (ollajev stop) or close other apps, or pick a smaller quant"
+            )
         log.info("loading %s on %s", key, device)
         started = time.monotonic()
         adapter = r.family.load(path, r, device)

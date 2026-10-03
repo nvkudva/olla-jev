@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from ollajev import names, normalize, store
 from ollajev.adapters import laya
-from ollajev.manager import NotDownloaded, NotTrusted, check_limits
+from ollajev.manager import NotDownloaded, NotEnoughMemory, NotTrusted, check_limits
 from ollajev.names import parse, pick_weights
 from ollajev.server import api
 
@@ -98,6 +98,7 @@ def test_choice_options_without_description_reach_the_model(client, stub):
     [
         (NotDownloaded("x is not downloaded"), 404, "model_not_found"),
         (NotTrusted("x is not trusted"), 403, "model_not_trusted"),
+        (NotEnoughMemory("x needs 9 GiB"), 503, "model_out_of_memory"),
         (ValueError("too many options"), 422, "value_error"),
     ],
 )
@@ -314,3 +315,18 @@ def test_a_quantized_onnx_copy_runs_on_the_laya_family(tmp_path, monkeypatch):
     torch = store.resolve("c/laya")  # the PyTorch repo matches by itself, as before
     assert (torch.family.name, torch.weights, torch.base) == ("laya", None, None)
     assert not laya.FAMILY.matches("q/laya-onnx", repos["q/laya-onnx"][1])
+
+
+def test_load_refuses_a_model_that_does_not_fit_in_free_memory(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    from ollajev import manager, store
+
+    (tmp_path / "m.safetensors").write_bytes(b"x" * 1000)
+    monkeypatch.setattr(store, "is_trusted", lambda r: True)
+    monkeypatch.setattr(store, "local_path", lambda r: str(tmp_path))
+    monkeypatch.setattr(manager, "pick_device", lambda requested: "cpu")
+    monkeypatch.setattr(manager, "free_memory", lambda device: 999)
+    r = SimpleNamespace(revision="r" * 12, family=None)
+    with pytest.raises(NotEnoughMemory, match="needs about .* but only .* free on cpu"):
+        manager.Manager()._load("m", r)

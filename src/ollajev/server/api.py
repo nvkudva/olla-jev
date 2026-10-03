@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .. import config, normalize, presets
-from ..manager import Manager, NotDownloaded, NotTrusted, default_model
+from ..manager import Manager, NotDownloaded, NotEnoughMemory, NotTrusted, default_model
 from . import admin
 
 JSONContent = str | dict[str, Any] | list[Any]
@@ -141,6 +141,8 @@ def _model_error(exc: Exception) -> JSONResponse:
         return _invalid(["body", "model"], str(exc), "model_not_found", 404)
     if isinstance(exc, NotTrusted):
         return _invalid(["body", "model"], str(exc), "model_not_trusted", 403)
+    if isinstance(exc, NotEnoughMemory):
+        return _invalid(["body", "model"], str(exc), "model_out_of_memory", 503)
     return _invalid(["body", "model"], str(exc))
 
 
@@ -189,7 +191,7 @@ def system_one(req: Annotated[SystemOneRequest, Body()]) -> Any:
     try:
         slot, result = current_manager().run(req.model, req.state, questions)
         answers = normalize.answers(questions, result["answers"])
-    except (NotDownloaded, NotTrusted) as exc:
+    except (NotDownloaded, NotTrusted, NotEnoughMemory) as exc:
         return _model_error(exc)
     except ValueError as exc:
         return _invalid(["body", "questions"], str(exc))
