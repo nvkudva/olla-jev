@@ -84,40 +84,57 @@ def connect(
     return ask_local, manager.unload_all
 
 
+EXIT = ("/bye", "/exit")
+
+
+class Exit(Exception):
+    pass
+
+
+def read_questions() -> dict[str, Any]:
+    """Questions typed one per line until an empty line; none after /state. Raises Exit on /bye."""
+    questions: dict[str, Any] = {}
+    while True:
+        line = input(f"q{len(questions) + 1}> ").strip()
+        if not line:
+            return questions
+        if line in EXIT:
+            raise Exit
+        if line == "/state":
+            return {}
+        parsed = parse_question(line)
+        if parsed is None:
+            print("  not a question; " + HELP.splitlines()[1].strip() + " (choice/score need 2+ options after |)")
+            continue
+        questions[f"q{len(questions) + 1}"] = parsed[1]
+
+
+def ask_about(state: str, ask: Callable[[str, dict[str, Any]], dict[str, Any]]) -> None:
+    """Rounds of questions on one state, until the user moves on to a new state."""
+    while True:
+        questions = read_questions()
+        if not questions:
+            return
+        try:
+            show(ask(state, questions)["answers"])
+        except (SystemExit, ValueError, LookupError) as exc:
+            print(f"  error: {exc}")
+        again = input("more questions on this state? [Y/n] ").strip().lower()
+        if again == "n":
+            return
+
+
 def run(model: str | None) -> None:
     ask, _ = connect(model, lambda text: print(f"==> {text}"))
     print(HELP)
     while True:
         state = input("\nstate> ").strip()
-        if state in ("/bye", "/exit"):
+        if state in EXIT:
             return
         if not state or state == "/help":
             print(HELP)
             continue
-        while True:
-            questions: dict[str, Any] = {}
-            while True:
-                line = input(f"q{len(questions) + 1}> ").strip()
-                if not line:
-                    break
-                if line in ("/bye", "/exit"):
-                    return
-                if line == "/state":
-                    questions = {}
-                    break
-                parsed = parse_question(line)
-                if parsed is None:
-                    print(
-                        "  not a question; " + HELP.splitlines()[1].strip() + " (choice/score need 2+ options after |)"
-                    )
-                    continue
-                questions[f"q{len(questions) + 1}"] = parsed[1]
-            if not questions:
-                break
-            try:
-                show(ask(state, questions)["answers"])
-            except (SystemExit, ValueError, LookupError) as exc:
-                print(f"  error: {exc}")
-            again = input("more questions on this state? [Y/n] ").strip().lower()
-            if again == "n":
-                break
+        try:
+            ask_about(state, ask)
+        except Exit:
+            return

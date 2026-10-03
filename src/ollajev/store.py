@@ -95,10 +95,11 @@ def snapshot(repo_id: str, revision: str) -> CachedRevisionInfo | None:
     """The downloaded snapshot of a repo at a commit, or None."""
     info = scan_cache_dir(config.models_dir())
     for repo in info.repos if info else ():
-        if repo.repo_id == repo_id:
-            for rev in repo.revisions:
-                if rev.commit_hash == revision:
-                    return rev
+        if repo.repo_id != repo_id:
+            continue
+        for cached in repo.revisions:
+            if cached.commit_hash == revision:
+                return cached
     return None
 
 

@@ -38,20 +38,23 @@ class _Julia:
         engine = load_model(path, device=device, max_length=LIMITS["max_tokens"], strict_encoding=True)
 
         def predict(state: Any, questions: dict[str, dict[str, Any]]) -> dict[str, Any]:
-            qs = {}
-            for qid, q in questions.items():
-                crit: Any = q.get("criteria")
-                out = {"type": q["type"], "instructions": text_state(instructions_or_name(qid, q))}
-                if q["type"] == "choice":
-                    out["criteria"] = {n: _label(n, d) for n, d in crit.items()}
-                elif q["type"] == "score":
-                    out["criteria"] = [text_state(level) for level in crit]
-                elif crit:
-                    out["criteria"] = {k: _label(k, crit.get(k)) for k in ("false", "true")}
-                qs[qid] = out
-            return engine.predict(state=state, questions=qs)
+            converted = {name: _question(name, question) for name, question in questions.items()}
+            return engine.predict(state=state, questions=converted)
 
         return Loaded(r.name, "Julia mmBERT-small typed-decision encoder", None, self.limits(r), predict, device=device)
+
+
+def _question(name: str, question: dict[str, Any]) -> dict[str, Any]:
+    """A Jev question in Julia's format: text labels and instructions."""
+    criteria: Any = question.get("criteria")
+    converted = {"type": question["type"], "instructions": text_state(instructions_or_name(name, question))}
+    if question["type"] == "choice":
+        converted["criteria"] = {option: _label(option, description) for option, description in criteria.items()}
+    elif question["type"] == "score":
+        converted["criteria"] = [text_state(level) for level in criteria]
+    elif criteria:
+        converted["criteria"] = {answer: _label(answer, criteria.get(answer)) for answer in ("false", "true")}
+    return converted
 
 
 FAMILY = _Julia()
