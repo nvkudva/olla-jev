@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="ollajev giraffe logo">
+  <rect width="512" height="512" rx="112" fill="#FFF6E0"/>
+  <rect x="204" y="300" width="104" height="212" fill="#F2B84B"/>
+  <g fill="#B8702E">
+    <ellipse cx="236" cy="380" rx="20" ry="16"/>
+    <ellipse cx="282" cy="430" rx="18" ry="22"/>
+    <ellipse cx="240" cy="476" rx="22" ry="16"/>
+  </g>
+  <g stroke="#6B3F1D" stroke-width="12" stroke-linecap="round">
+    <line x1="226" y1="132" x2="216" y2="80"/>
+    <line x1="286" y1="132" x2="296" y2="80"/>
+  </g>
+  <g fill="#6B3F1D">
+    <circle cx="214" cy="74" r="15"/>
+    <circle cx="298" cy="74" r="15"/>
+  </g>
+  <ellipse cx="168" cy="192" rx="38" ry="17" transform="rotate(-25 168 192)" fill="#F2B84B"/>
+  <ellipse cx="344" cy="192" rx="38" ry="17" transform="rotate(25 344 192)" fill="#F2B84B"/>
+  <ellipse cx="170" cy="192" rx="20" ry="8" transform="rotate(-25 170 192)" fill="#E89A8C"/>
+  <ellipse cx="342" cy="192" rx="20" ry="8" transform="rotate(25 342 192)" fill="#E89A8C"/>
+  <rect x="184" y="126" width="144" height="200" rx="68" fill="#F2B84B"/>
+  <g fill="#B8702E">
+    <ellipse cx="256" cy="156" rx="16" ry="12"/>
+    <ellipse cx="208" cy="168" rx="11" ry="9"/>
+    <ellipse cx="306" cy="172" rx="11" ry="9"/>
+  </g>
+  <ellipse cx="256" cy="288" rx="62" ry="46" fill="#FBE3AE"/>
+  <g fill="#3B2312">
+    <circle cx="224" cy="222" r="12"/>
+    <circle cx="288" cy="222" r="12"/>
+    <ellipse cx="238" cy="276" rx="7" ry="10"/>
+    <ellipse cx="274" cy="276" rx="7" ry="10"/>
+  </g>
+  <g fill="#FFFFFF">
+    <circle cx="228" cy="217" r="4"/>
+    <circle cx="292" cy="217" r="4"/>
+  </g>
+  <path d="M236 310 Q256 326 276 310" fill="none" stroke="#3B2312" stroke-width="7" stroke-linecap="round"/>
+</svg>

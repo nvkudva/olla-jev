@@ -86,8 +86,8 @@ def cmd_show(args: argparse.Namespace) -> None:
     print(f"  model        {canonical(r)}")
     print(f"  family       {r.family.name}")
     print(f"  revision     {r.revision}")
-    if r.gguf:
-        print(f"  file         {r.gguf}")
+    if r.weights:
+        print(f"  file         {r.weights}")
     print(f"  released     {store.released(r.repo_id) or '-'}")
     print(
         f"  repo code    {'yes, ' + ('trusted' if store.is_trusted(r) else 'NOT trusted') if r.family.runs_repo_code else 'no'}"

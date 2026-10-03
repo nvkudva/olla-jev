@@ -6,16 +6,22 @@ the GGUF engine, so no repo code is imported.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
+from .. import names
 from .base import Loaded
 
 LIMITS = {"max_options": 255, "max_levels": 10, "max_tokens": 32768}
+META = ["*.json", "*.jinja", "*.txt", "tokenizer*"]
 
 
 class _Decider:
     name = "decider"
     runs_repo_code = False
+    # A plain llama.cpp quantization of a decider repo runs too: the readout is the LM head's letter logits, and
+    # the prompt layout, temperatures and tokenizer come from these files of the base repo.
+    base_files = META
 
     def limits(self, r) -> dict:
         return LIMITS
@@ -23,15 +29,23 @@ class _Decider:
     def matches(self, repo_id: str, files: list[str]) -> bool:
         return "decider_config.json" in files
 
+    def runs_weights(self, weights: str, files: list[str]) -> bool:
+        return names.format_of(weights) == "gguf"
+
     def allow_patterns(self, r) -> list[str]:
-        meta = ["*.json", "*.jinja", "*.txt", "tokenizer*"]
-        return [r.gguf, *meta] if r.gguf else ["*.safetensors", *meta]
+        return [r.weights, *META] if r.weights else ["*.safetensors", *META]
 
     def load(self, path: str, r, device: str | None) -> Loaded:
         from decider.infer import Decider
 
-        if r.gguf:
-            d = Decider(path, gguf_file=r.gguf)
+        if r.base:
+            from .. import store
+
+            # The base folder supplies decider_config.json and the tokenizer; gguf_file is an absolute path.
+            d = Decider(store.local_path(r.base), gguf_file=os.path.join(path, r.weights))
+            backend = "llama.cpp"
+        elif r.weights:
+            d = Decider(path, gguf_file=r.weights)
             backend = "llama.cpp"
         else:
             d = Decider(path, device=device)
@@ -46,7 +60,7 @@ class _Decider:
             None,
             self.limits(r),
             predict,
-            device="llama.cpp" if r.gguf else device,
+            device="llama.cpp" if r.weights else device,
         )
 
 

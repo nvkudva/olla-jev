@@ -11,9 +11,10 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from ollajev import normalize, store
+from ollajev import names, normalize, store
+from ollajev.adapters import laya
 from ollajev.manager import NotDownloaded, NotTrusted, check_limits
-from ollajev.names import parse, pick_gguf
+from ollajev.names import parse, pick_weights
 from ollajev.server import api
 
 NOUL = {"type": "noul", "noul": 0.9, "x_extra": 1}
@@ -156,13 +157,14 @@ FILES = ["m-Q8_0.gguf", "m-Q4_K_M.gguf", "m-BF16.gguf", "config.json"]
 
 
 def test_gguf_quant_selection_follows_ollama():
-    assert pick_gguf(FILES, None) == "m-Q4_K_M.gguf"
-    assert pick_gguf(FILES, "q8_0") == "m-Q8_0.gguf"
-    assert pick_gguf(FILES, "m-BF16.gguf") == "m-BF16.gguf"
-    assert pick_gguf(["m-Q8_0.gguf", "m-Q5_K_M.gguf"], None) == "m-Q5_K_M.gguf"
-    assert pick_gguf(["m_f16.gguf", "m_ud_q4_k_m.gguf"], "Q4_K_M") == "m_ud_q4_k_m.gguf"
+    assert pick_weights(FILES, None) == "m-Q4_K_M.gguf"
+    assert pick_weights(FILES, "q8_0") == "m-Q8_0.gguf"
+    assert pick_weights(FILES, "m-BF16.gguf") == "m-BF16.gguf"
+    assert pick_weights(["m-Q8_0.gguf", "m-Q5_K_M.gguf"], None) == "m-Q5_K_M.gguf"
+    assert pick_weights(["m_f16.gguf", "m_ud_q4_k_m.gguf"], "Q4_K_M") == "m_ud_q4_k_m.gguf"
+    assert pick_weights(["m.mmproj-Q8_0.gguf", "m.Q8_0.gguf"], "Q8_0") == "m.Q8_0.gguf"
     with pytest.raises(ValueError):
-        pick_gguf(FILES, "Q2_K")
+        pick_weights(FILES, "Q2_K")
 
 
 def test_confidence_uses_typesafe_formulas():
@@ -202,13 +204,13 @@ def test_variants_name_each_quant_and_size_its_download():
         "decider_config.json": 1,
         "tokenizer.json": 1,
     }
-    found = store._variants("Mapika/decider-x-GGUF", "sha", sizes)
+    found = store._variants("Mapika/decider-x-GGUF", "sha", sizes, store._family("Mapika/decider-x-GGUF", list(sizes)))
     assert [(v.name, v.size) for v in found] == [
         ("Mapika/decider-x-GGUF:Q4_K_M", 6),
         ("Mapika/decider-x-GGUF:m-Q4_K_M-imat.gguf", 7),
         ("Mapika/decider-x-GGUF:Q8_0", 10),
     ]
-    assert [v.name for v in store._variants("u/r", "sha", {"weights.bin": 3})] == ["u/r"]
+    assert [v.name for v in store._variants("u/r", "sha", {"weights.bin": 3}, None)] == ["u/r"]
 
 
 def test_search_lists_supported_models_first(monkeypatch):
@@ -222,7 +224,7 @@ def test_search_lists_supported_models_first(monkeypatch):
     ]
 
     class Api:
-        def model_info(self, repo_id):
+        def model_info(self, repo_id, **kwargs):
             raise store.RepositoryNotFoundError("missing")
 
         def list_models(self, **kwargs):
@@ -230,3 +232,85 @@ def test_search_lists_supported_models_first(monkeypatch):
 
     monkeypatch.setattr(store, "HfApi", Api)
     assert [h.repo_id for h in store.search("a")] == ["u/a-decider", "u/a-GGUF"]
+
+
+def test_a_quantized_copy_runs_on_its_base_family(tmp_path, monkeypatch):
+    monkeypatch.setenv("OLLAJEV_HOME", str(tmp_path))
+    monkeypatch.setenv("OLLAJEV_MODELS", str(tmp_path / "models"))
+    repos = {
+        "q/decider-GGUF": ("c1", ["decider.Q4_K_M.gguf", "README.md"], ["Mapika/decider-x"]),
+        "Mapika/decider-x": ("b1", ["decider_config.json", "model.safetensors", "tokenizer.json"], []),
+        "q/laya-GGUF": ("c2", ["laya.Q4_K_M.gguf"], ["convaiinnovations/laya"]),
+        "convaiinnovations/laya": ("b2", ["rl_agent_config.json", "model.safetensors"], []),
+    }
+    monkeypatch.setattr(store, "_remote_files", lambda repo, rev: (repos[repo][0], None, *repos[repo][1:]))
+    r = store.resolve("q/decider-GGUF")
+    assert (r.family.name, r.weights, r.allow) == ("decider", "decider.Q4_K_M.gguf", ["decider.Q4_K_M.gguf"])
+    assert r.base is not None and (r.base.repo_id, r.base.revision) == ("Mapika/decider-x", "b1")
+    assert "*.json" in (r.base.allow or [])
+    with pytest.raises(LookupError):  # laya cannot run a GGUF with its base's files
+        store.resolve("q/laya-GGUF")
+
+
+def test_only_quantizations_inherit_a_family():
+    models = [{"id": "Mapika/decider-x"}]
+    assert store._quantized_from({"relation": "quantized", "models": models}) == ["Mapika/decider-x"]
+    assert store._quantized_from({"relation": "finetune", "models": models}) == []
+    assert store._quantized_from(None) == []
+
+
+ONNX = ["model.onnx", "model_fp16.onnx", "model_fp16.onnx_data", "model_int8.onnx", "tokenizer.json"]
+
+
+def test_onnx_exports_are_variants_named_by_precision():
+    assert pick_weights(ONNX, None) == "model.onnx"
+    assert pick_weights(ONNX, "FP16") == "model_fp16.onnx"
+    assert pick_weights(["onnx/model-int8.onnx", "onnx/model-fp32.onnx"], None) == "onnx/model-fp32.onnx"
+    assert pick_weights(["a/model.onnx", "b/model.onnx"], "b/model.onnx") == "b/model.onnx"
+    assert pick_weights(["m.Q4_K_M.gguf", "model.onnx"], None) == "m.Q4_K_M.gguf"  # GGUF repos stay GGUF repos
+    with pytest.raises(ValueError, match=r"fp16, int8, model\.onnx"):
+        pick_weights(ONNX, "q4")
+    assert names.labels(["a/model.onnx", "b/model.onnx", "x.int8.onnx"]) == {
+        "a/model.onnx": "a/model.onnx",
+        "b/model.onnx": "b/model.onnx",
+        "x.int8.onnx": "int8",
+    }
+    assert names.sidecars("onnx/model.onnx") == ["onnx/model.onnx_data", "onnx/model.onnx.data"]
+    assert names.sidecars("m.Q4_K_M.gguf") == []
+    assert parse("https://huggingface.co/a/b/blob/main/onnx/model_fp16.onnx").tag == "model_fp16.onnx"
+
+
+def test_an_onnx_variant_downloads_its_external_data():
+    sizes = {"onnx/model.onnx": 3, "onnx/model.onnx_data": 100, "onnx/model_fp16.onnx": 3, "laya.onnx": 2}
+    sizes |= {"onnx/model_fp16.onnx_data": 50, "laya.onnx.data": 90, "config.json": 1}
+    found = store._variants("u/laya-ONNX", "sha", sizes, None)
+    assert [(v.name, v.size) for v in found] == [
+        ("u/laya-ONNX:fp16", 53),
+        ("u/laya-ONNX:laya.onnx", 92),
+        ("u/laya-ONNX:model.onnx", 103),
+    ]
+
+
+def test_a_quantized_onnx_copy_runs_on_the_laya_family(tmp_path, monkeypatch):
+    monkeypatch.setenv("OLLAJEV_HOME", str(tmp_path))
+    monkeypatch.setenv("OLLAJEV_MODELS", str(tmp_path / "models"))
+    torch_files = ["rl_agent_config.json", "model.safetensors", "tokenizer/tokenizer.json"]
+    repos = {
+        "q/laya-onnx": ("c1", ["onnx/model.onnx", "onnx/model.onnx_data", "onnx/model_int8.onnx"], ["c/laya"]),
+        "q/laya-split": ("c2", ["encoder.onnx", "head.onnx", "rl_agent_config.json"], ["c/laya"]),
+        "q/laya-int4": ("c3", ["laya-int4-blk32.onnx", "laya-int4-blk32.onnx.data"], ["c/laya"]),
+        "c/laya": ("b1", torch_files, []),
+    }
+    monkeypatch.setattr(store, "_remote_files", lambda repo, rev: (repos[repo][0], None, *repos[repo][1:]))
+    r = store.resolve("q/laya-onnx")
+    assert (r.family.name, r.weights) == ("laya", "onnx/model.onnx")
+    assert r.allow == ["onnx/model.onnx", "onnx/model.onnx_data", "onnx/model.onnx.data"]
+    assert r.base is not None and r.base.repo_id == "c/laya"
+    assert r.base.allow == ["rl_agent_config.json", "tokenizer/*"]
+    assert store.resolve("q/laya-onnx:int8").weights == "onnx/model_int8.onnx"
+    for unsupported in ("q/laya-split", "q/laya-int4"):
+        with pytest.raises(LookupError, match="does not run"):
+            store.resolve(unsupported)
+    torch = store.resolve("c/laya")  # the PyTorch repo matches by itself, as before
+    assert (torch.family.name, torch.weights, torch.base) == ("laya", None, None)
+    assert not laya.FAMILY.matches("q/laya-onnx", repos["q/laya-onnx"][1])

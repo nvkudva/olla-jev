@@ -29,7 +29,7 @@
 - [x] Implement Intern-Decision adapter for Intern-Decision-0.8B
 - [x] Implement Decision-1.0 adapter for Kai-0.6B and Lex-0.6B
 - [x] Add decider-0.8b, decider-2b, kev-0.5b, kev-0.6b, kev-0.8b to the catalog
-- [ ] Phase 2: support models over 4 GB (decider-4b+, kev-4b+, Open-Jev, Intern-Decision-2B/4B, Decision-1.0 Sol/Nox/Lux, JEV-9B, NeoHorse, GLiNER2.5-Decide-1B)
+- [ ] Support larger models (decider-4b+, kev-4b+, Open-Jev, Intern-Decision-2B/4B, Decision-1.0 Sol/Nox/Lux, JEV-9B, NeoHorse, GLiNER2.5-Decide-1B)
 - [ ] Phase 2: free-memory check before loading a model, with a clear error
 - [ ] Phase 2: GLiNER2.5-Decide adapter with a confidence policy for label-only output
 - [ ] Phase 2: OpenThai-SystemOne adapter
@@ -38,7 +38,7 @@
 - [x] Default model: Mapika/decider-4b-GGUF:Q4_K_M (2.7 GB); add Mapika/decider-2b-GGUF:Q4_K_M and :Q8_0 to catalog
 - [ ] Phase 2: NeoHorse-Jev-4B GGUF Q4_K_M with its own runtime
 - [ ] Phase 2: check onnx-community/kev-4b-ONNX q4 for pointer head; ONNX Runtime backend if usable
-- [ ] Implement `peft-pointer` adapter for kev-4b (phase 2, over 4 GB)
+- [ ] Implement `peft-pointer` adapter for kev-4b
 - [ ] Investigate Decision-1.0 Kai near-uniform score distributions
 - [ ] Julia-1 on MPS: its runtime leaves inputs on CPU; runs on CPU for now
 - [ ] Byte-level progress in /api/pull stream (now status lines only)

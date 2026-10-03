@@ -10,10 +10,9 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import config, store
+from . import config, names, store
 from .adapters import pick_device
 from .adapters.base import Adapter
-from .names import quant_of
 
 log = logging.getLogger(__name__)
 
@@ -31,10 +30,10 @@ class NotTrusted(PermissionError):
 
 
 def canonical(r: store.Resolved) -> str:
-    """One name per weight file: `repo` or `repo:QUANT`, whatever spelling the request used."""
-    if r.gguf is None:
+    """One name per weight file: `repo`, `repo:QUANT` or `repo:fp16`, whatever spelling the request used."""
+    if r.weights is None:
         return r.repo_id
-    return f"{r.repo_id}:{quant_of(r.gguf) or r.gguf.rsplit('/', 1)[-1]}"
+    return f"{r.repo_id}:{names.label_of(r.weights)}"
 
 
 def default_model() -> str:

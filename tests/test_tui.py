@@ -17,6 +17,7 @@ def app(tmp_path, monkeypatch):
     monkeypatch.setenv("OLLAJEV_HOME", str(tmp_path))
     monkeypatch.setenv("OLLAJEV_MODELS", str(tmp_path / "models"))
     monkeypatch.setattr(client, "server_running", lambda: False)
+    monkeypatch.setattr(tui, "variants", lambda repo: [])  # offline: the catalog's quants are not listed
     return tui.Models()
 
 
@@ -53,14 +54,14 @@ def test_ask_needs_a_downloaded_model(app):
     assert drive(app, ["r"]) == []
 
 
-def test_add_model_searches_and_returns_the_picked_quant(app, monkeypatch):
+def quants(repo):
+    return [tui.store.Variant(f"{repo}:{q}", q, n) for q, n in (("Q4_K_M", 2_700_000_000), ("Q8_0", 4_500_000_000))]
+
+
+def test_add_model_lists_every_quant_and_returns_the_picked_one(app, monkeypatch):
     hits = [tui.store.Hit("u/ok-GGUF", 1200, "decider"), tui.store.Hit("u/no-GGUF", 5, None)]
-    monkeypatch.setattr(tui.store, "search", lambda query: hits)
-    monkeypatch.setattr(
-        tui.store,
-        "variants",
-        lambda repo: [tui.store.Variant(f"{repo}:Q4_K_M", "Q4_K_M", 2_700_000_000)],
-    )
+    monkeypatch.setattr(tui.store, "search", lambda query, limit: hits)
+    monkeypatch.setattr(tui, "variants", quants)
     picked = []
 
     async def go():
@@ -69,10 +70,26 @@ def test_add_model_searches_and_returns_the_picked_quant(app, monkeypatch):
             await pilot.pause()
             await pilot.press(*"ok", "enter")
             await pilot.pause(0.5)
-            variants = app.screen.query_one("#variants", DataTable)
-            assert variants.get_row_at(0) == ["Q4_K_M", "2.7 GB"]
-            await pilot.press("enter", "enter")
+            results = app.screen.query_one("#results", DataTable)
+            rows = [results.get_row_at(i) for i in range(results.row_count)]
+            assert rows[0] == ["u/ok-GGUF:Q4_K_M", "2.7 GB", "1.2k", "✓ decider"]
+            assert [r[0] for r in rows] == ["u/ok-GGUF:Q4_K_M", "u/ok-GGUF:Q8_0", "u/no-GGUF:Q4_K_M", "u/no-GGUF:Q8_0"]
+            await pilot.press("down", "enter")
             await pilot.pause()
 
     asyncio.run(go())
-    assert picked == ["u/ok-GGUF:Q4_K_M"]
+    assert picked == ["u/ok-GGUF:Q8_0"]
+
+
+def test_the_model_list_shows_every_quant_of_a_catalog_gguf_repo(app, monkeypatch):
+    monkeypatch.setattr(tui, "variants", quants)
+
+    async def go():
+        async with app.run_test(size=(120, 36)) as pilot:
+            await pilot.pause(0.3)
+            return list(app.names)
+
+    names = asyncio.run(go())
+    repo = next(e.name for e in CATALOG if ":" in e.name).partition(":")[0]
+    assert f"{repo}:Q4_K_M" in names and f"{repo}:Q8_0" in names
+    assert len(names) == len(set(names))
