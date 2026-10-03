@@ -23,7 +23,7 @@ class _Decider:
     # the prompt layout, temperatures and tokenizer come from these files of the base repo.
     base_files = META
 
-    def limits(self, r) -> dict:
+    def limits(self, resolved) -> dict:
         return LIMITS
 
     def matches(self, repo_id: str, files: list[str]) -> bool:
@@ -32,35 +32,35 @@ class _Decider:
     def runs_weights(self, weights: str, files: list[str]) -> bool:
         return names.format_of(weights) == "gguf"
 
-    def allow_patterns(self, r) -> list[str]:
-        return [r.weights, *META] if r.weights else ["*.safetensors", *META]
+    def allow_patterns(self, resolved) -> list[str]:
+        return [resolved.weights, *META] if resolved.weights else ["*.safetensors", *META]
 
-    def load(self, path: str, r, device: str | None) -> Loaded:
+    def load(self, path: str, resolved, device: str | None) -> Loaded:
         from decider.infer import Decider
 
-        if r.base:
+        if resolved.base:
             from .. import store
 
             # The base folder supplies decider_config.json and the tokenizer; gguf_file is an absolute path.
-            d = Decider(store.local_path(r.base), gguf_file=os.path.join(path, r.weights))
+            decider = Decider(store.local_path(resolved.base), gguf_file=os.path.join(path, resolved.weights))
             backend = "llama.cpp"
-        elif r.weights:
-            d = Decider(path, gguf_file=r.weights)
+        elif resolved.weights:
+            decider = Decider(path, gguf_file=resolved.weights)
             backend = "llama.cpp"
         else:
-            d = Decider(path, device=device)
+            decider = Decider(path, device=device)
             backend = f"PyTorch {device}"
 
         def predict(state: Any, questions: dict[str, dict[str, Any]]) -> dict[str, Any]:
-            return d.system_one(state, questions)
+            return decider.system_one(state, questions)
 
         return Loaded(
-            r.name,
+            resolved.name,
             f"decider typed-decision model ({backend})",
             None,
-            self.limits(r),
+            self.limits(resolved),
             predict,
-            device="llama.cpp" if r.weights else device,
+            device="llama.cpp" if resolved.weights else device,
         )
 
 

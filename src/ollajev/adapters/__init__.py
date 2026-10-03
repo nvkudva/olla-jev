@@ -19,11 +19,11 @@ class Family(Protocol):
 
     def matches(self, repo_id: str, files: list[str]) -> bool: ...
 
-    def allow_patterns(self, r: Resolved) -> list[str] | None: ...
+    def allow_patterns(self, resolved: Resolved) -> list[str] | None: ...
 
-    def limits(self, r: Resolved) -> dict[str, Any]: ...
+    def limits(self, resolved: Resolved) -> dict[str, Any]: ...
 
-    def load(self, path: str, r: Resolved, device: str | None) -> Adapter: ...
+    def load(self, path: str, resolved: Resolved, device: str | None) -> Adapter: ...
 
 
 def families() -> list[Family]:
@@ -93,9 +93,9 @@ def text_state(state: Any) -> str:
     return state if isinstance(state, str) else json.dumps(state, ensure_ascii=False)
 
 
-def instructions_or_name(qid: str, q: dict[str, Any]) -> Any:
+def instructions_or_name(qid: str, question: dict[str, Any]) -> Any:
     """Jev leaves instructions optional; most models need text. Fall back to the humanized question id."""
-    return q.get("instructions") if q.get("instructions") not in (None, "") else qid.replace("_", " ")
+    return question.get("instructions") if question.get("instructions") not in (None, "") else qid.replace("_", " ")
 
 
 def has(files: list[str], *names: str) -> bool:

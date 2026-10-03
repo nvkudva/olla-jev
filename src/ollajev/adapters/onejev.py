@@ -84,12 +84,12 @@ def state_text(state: Any) -> str:
     return state if isinstance(state, str) else json.dumps(state, ensure_ascii=False, indent=2)
 
 
-def question(q: dict[str, Any]) -> tuple[list[str], str]:
+def question(question_spec: dict[str, Any]) -> tuple[list[str], str]:
     """A question's answer labels and its turn text after the state block."""
-    kind, crit = q["type"], q.get("criteria")
+    kind, crit = question_spec["type"], question_spec.get("criteria")
     if kind == "noul":
         crit = crit if isinstance(crit, dict) else {}
-        text = entry(q.get("instructions")) or NOUL_INSTRUCTIONS
+        text = entry(question_spec.get("instructions")) or NOUL_INSTRUCTIONS
         labels, names = ["yes", "no"], ["yes", "no"]
         descs = [
             entry(crit["true"]) if crit.get("true") is not None else NOUL_TRUE,
@@ -97,12 +97,12 @@ def question(q: dict[str, Any]) -> tuple[list[str], str]:
         ]
         header = "Question:"
     elif kind == "choice":
-        text = entry(q.get("instructions")) or "Which option applies to the state?"
+        text = entry(question_spec.get("instructions")) or "Which option applies to the state?"
         crit = crit if isinstance(crit, dict) else dict.fromkeys(crit or [])
         labels, names, descs = list(crit), list(crit), [entry(d) for d in crit.values()]
         header = "Question:"
     elif kind == "score":
-        text = entry(q.get("instructions")) or "Which level describes the state?"
+        text = entry(question_spec.get("instructions")) or "Which level describes the state?"
         levels = list(crit or [])
         labels, names = [str(i) for i in range(len(levels))], [f"level {i}" for i in range(len(levels))]
         descs = [entry(level) for level in levels]
@@ -126,17 +126,17 @@ def messages(state: Any, suffix: str) -> list[dict[str, str]]:
 
 def softmax(logits: list[float]) -> list[float]:
     top = max(logits)
-    w = [math.exp(x - top) for x in logits]
-    return [x / sum(w) for x in w]
+    weights = [math.exp(x - top) for x in logits]
+    return [x / sum(weights) for x in weights]
 
 
-def shape(q: dict[str, Any], labels: list[str], logits: list[float]) -> dict[str, Any]:
+def shape(question: dict[str, Any], labels: list[str], logits: list[float]) -> dict[str, Any]:
     """The adapter answer for one question from its slot logits."""
-    p = softmax(logits)
-    if q["type"] == "noul":
-        return {"noul": p[0]}
-    probs = dict(zip(labels, p, strict=True))
-    if q["type"] == "choice":
+    probabilities = softmax(logits)
+    if question["type"] == "noul":
+        return {"noul": probabilities[0]}
+    probs = dict(zip(labels, probabilities, strict=True))
+    if question["type"] == "choice":
         return {"choice": max(probs, key=probs.__getitem__), "probabilities": probs}
     return {"probabilities": probs}
 
@@ -179,13 +179,13 @@ class _Prompts:
             rows.append((qid, labels, self.encode(self.render(state, suffix))))
         text = self.render(state, MARK)
         prefix = self.encode(text[: text.index(MARK)])
-        n = len(prefix)
-        while n > 0 and not all(ids[:n] == prefix[:n] for _, _, ids in rows):
-            n -= 1
+        shared = len(prefix)
+        while shared > 0 and not all(ids[:shared] == prefix[:shared] for _, _, ids in rows):
+            shared -= 1
         longest = max(len(ids) for _, _, ids in rows)
         if longest > LIMITS["max_tokens"]:
             raise ValueError(f"state plus question is {longest} tokens, limit is {LIMITS['max_tokens']}")
-        return prefix[:n], [(qid, labels, ids[n:]) for qid, labels, ids in rows]
+        return prefix[:shared], [(qid, labels, ids[shared:]) for qid, labels, ids in rows]
 
 
 def _torch_engine(path: str, device: str):
@@ -213,13 +213,13 @@ def _torch_engine(path: str, device: str):
             out = model(input_ids=torch.tensor([prefix], device=device), use_cache=True, logits_to_keep=1)
             cache = out.past_key_values
             for qid, labels, ids in rows:
-                o = model(
+                output = model(
                     input_ids=torch.tensor([ids], device=device),
                     past_key_values=copy.deepcopy(cache),
                     use_cache=True,
                     logits_to_keep=1,
                 )
-                logits = o.logits[0, -1][slots[: len(labels)]].float().tolist()
+                logits = output.logits[0, -1][slots[: len(labels)]].float().tolist()
                 answers[qid] = shape(questions[qid], labels, logits)
         tokens = len(prefix) + sum(len(ids) for _, _, ids in rows)
         return {"answers": answers, "usage": {"input_tokens": tokens, "output_tokens": 0}}
@@ -269,7 +269,7 @@ class _OneJev:
     def runs_weights(self, weights: str, files: list[str]) -> bool:
         return names.format_of(weights) == "gguf"
 
-    def limits(self, r) -> dict:
+    def limits(self, resolved) -> dict:
         return LIMITS
 
     def matches(self, repo_id: str, files: list[str]) -> bool:
@@ -277,24 +277,30 @@ class _OneJev:
         weights = "model.safetensors" in files or "model.safetensors.index.json" in files
         return bool(REPO.fullmatch(repo_id)) and weights and "tokenizer.json" in files
 
-    def allow_patterns(self, r) -> list[str]:
-        return [r.weights, *META] if r.weights else ["*.safetensors", *META]
+    def allow_patterns(self, resolved) -> list[str]:
+        return [resolved.weights, *META] if resolved.weights else ["*.safetensors", *META]
 
-    def load(self, path: str, r, device: str | None) -> Loaded:
-        if r.base or r.weights:
+    def load(self, path: str, resolved, device: str | None) -> Loaded:
+        if resolved.base or resolved.weights:
             from .. import store
 
-            tokenizer_dir = store.local_path(r.base) if r.base else path
+            tokenizer_dir = store.local_path(resolved.base) if resolved.base else path
             if tokenizer_dir is None:
-                raise LookupError(f"the base files of {r.name} are not downloaded")
-            predict, close = _gguf_engine(os.path.join(path, r.weights), tokenizer_dir)
+                raise LookupError(f"the base files of {resolved.name} are not downloaded")
+            predict, close = _gguf_engine(os.path.join(path, resolved.weights), tokenizer_dir)
             backend, device = "llama.cpp", "llama.cpp"
         else:
             device = device or "cpu"
             predict, close = _torch_engine(path, device)
             backend = f"PyTorch {device}"
         return Loaded(
-            r.name, f"OneJev System One decision model ({backend})", None, self.limits(r), predict, close, device
+            resolved.name,
+            f"OneJev System One decision model ({backend})",
+            None,
+            self.limits(resolved),
+            predict,
+            close,
+            device,
         )
 
 

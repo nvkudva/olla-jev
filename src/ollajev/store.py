@@ -255,15 +255,15 @@ def search(query: str, limit: int = 40) -> list[Hit]:
         ][:100]
         found = None
 
-    def hit(m) -> Hit:
-        family = _family(m.id, [s.rfilename for s in m.siblings or []], getattr(m, "base_models", None))
-        return Hit(m.id, m.downloads or 0, family.name if family else None)
+    def hit(model) -> Hit:
+        family = _family(model.id, [s.rfilename for s in model.siblings or []], getattr(model, "base_models", None))
+        return Hit(model.id, model.downloads or 0, family.name if family else None)
 
-    def lookup(m) -> Hit:  # a repo deleted or made private since the listing stays, as unsupported
+    def lookup(model) -> Hit:  # a repo deleted or made private since the listing stays, as unsupported
         try:
-            return hit(api.model_info(m.id, expand=expand))
+            return hit(api.model_info(model.id, expand=expand))
         except RepositoryNotFoundError:
-            return Hit(m.id, m.downloads or 0, None)
+            return Hit(model.id, model.downloads or 0, None)
 
     if found is not None:
         hits = [hit(m) for m in found]
@@ -314,13 +314,17 @@ def _pick(ref: Ref, files: list[str]) -> str | None:
     return None
 
 
-def local_path(r: Resolved) -> str | None:
+def local_path(resolved: Resolved) -> str | None:
     """The snapshot folder holding `r`'s weights, or None until it and, for a copy, its base files are on disk."""
-    if r.base and local_path(r.base) is None:
+    if resolved.base and local_path(resolved.base) is None:
         return None
     try:
         return snapshot_download(
-            r.repo_id, revision=r.revision, allow_patterns=r.allow, cache_dir=config.models_dir(), local_files_only=True
+            resolved.repo_id,
+            revision=resolved.revision,
+            allow_patterns=resolved.allow,
+            cache_dir=config.models_dir(),
+            local_files_only=True,
         )
     except LocalEntryNotFoundError:
         return None
@@ -345,25 +349,28 @@ def _cancellable(cancel: threading.Event | None) -> type[hf_tqdm] | None:
     return Bar
 
 
-def download(r: Resolved, cancel: threading.Event | None = None) -> str:
+def download(resolved: Resolved, cancel: threading.Event | None = None) -> str:
     """Fetch the snapshot, then pin the repo to this commit if it has no pin yet. A copy also fetches its base's
     config files and records which base commit they came from. Setting `cancel` aborts it with Cancelled."""
     fetch = functools.partial(snapshot_download, cache_dir=config.models_dir(), tqdm_class=_cancellable(cancel))
-    if r.base:
-        fetch(r.base.repo_id, revision=r.base.revision, allow_patterns=r.base.allow)
+    if resolved.base:
+        fetch(resolved.base.repo_id, revision=resolved.base.revision, allow_patterns=resolved.base.allow)
         with config.edit() as data:
-            data.setdefault("bases", {})[r.repo_id] = {"repo": r.base.repo_id, "revision": r.base.revision}
-    path = fetch(r.repo_id, revision=r.revision, allow_patterns=r.allow)
-    if r.repo_id not in pins():
-        _pin(r.repo_id, r.revision, r.created)
+            data.setdefault("bases", {})[resolved.repo_id] = {
+                "repo": resolved.base.repo_id,
+                "revision": resolved.base.revision,
+            }
+    path = fetch(resolved.repo_id, revision=resolved.revision, allow_patterns=resolved.allow)
+    if resolved.repo_id not in pins():
+        _pin(resolved.repo_id, resolved.revision, resolved.created)
     return path
 
 
-def download_size(r: Resolved) -> int:
+def download_size(resolved: Resolved) -> int:
     """Bytes `download` fetches for `r`'s own repo."""
-    info = HfApi().model_info(r.repo_id, revision=r.revision, files_metadata=True)
+    info = HfApi().model_info(resolved.repo_id, revision=resolved.revision, files_metadata=True)
     sizes = {s.rfilename: s.size or 0 for s in info.siblings or []}
-    return sum(sizes[f] for f in filter_repo_objects(list(sizes), allow_patterns=r.allow))
+    return sum(sizes[f] for f in filter_repo_objects(list(sizes), allow_patterns=resolved.allow))
 
 
 def bytes_on_disk(repo_id: str) -> int:
@@ -377,20 +384,20 @@ def downloaded() -> dict[str, tuple[int, float]]:
     wanted = pins()
     info = scan_cache_dir(config.models_dir())
     return {
-        r.repo_id: (r.size_on_disk, r.last_modified)
-        for r in (info.repos if info else ())
-        if r.repo_id in wanted and r.repo_type == "model"
+        repo.repo_id: (repo.size_on_disk, repo.last_modified)
+        for repo in (info.repos if info else ())
+        if repo.repo_id in wanted and repo.repo_type == "model"
     }
 
 
-def delete_file(r: Resolved) -> int:
+def delete_file(resolved: Resolved) -> int:
     """Remove one weight file of a downloaded repo, with its ONNX external data. A blob goes only when no other
     snapshot links to it."""
-    rev = snapshot(r.repo_id, r.revision)
-    if rev is None or r.weights is None:
+    rev = snapshot(resolved.repo_id, resolved.revision)
+    if rev is None or resolved.weights is None:
         return 0
     freed = 0
-    for name in [r.weights, *names.sidecars(r.weights)]:
+    for name in [resolved.weights, *names.sidecars(resolved.weights)]:
         link = rev.snapshot_path / name
         if not link.is_symlink():
             continue
@@ -407,14 +414,14 @@ def delete_file(r: Resolved) -> int:
     return freed
 
 
-def remove(r: Resolved) -> int:
+def remove(resolved: Resolved) -> int:
     """Delete what `r` names: one variant when the repo has others on disk, else the whole repo. Bytes freed."""
-    path = local_path(r)
-    if r.weights and path:
+    path = local_path(resolved)
+    if resolved.weights and path:
         on_disk = names.weight_files([str(p.relative_to(path)) for p in Path(path).glob("**/*")])
-        if any(f != r.weights for f in on_disk):
-            return delete_file(r)
-    return delete(r.repo_id)
+        if any(f != resolved.weights for f in on_disk):
+            return delete_file(resolved)
+    return delete(resolved.repo_id)
 
 
 def delete(repo_id: str) -> int:
@@ -437,21 +444,23 @@ def delete(repo_id: str) -> int:
     return freed
 
 
-def trust_label(r: Resolved) -> str:
+def trust_label(resolved: Resolved) -> str:
     """How `show` and the model manager describe whether a model runs code from its repo."""
-    if not r.family.runs_repo_code:
+    if not resolved.family.runs_repo_code:
         return "no repo code"
-    if is_trusted(r):
+    if is_trusted(resolved):
         return "trusted"
     return "NOT trusted"
 
 
-def is_trusted(r: Resolved) -> bool:
-    return not r.family.runs_repo_code or f"{r.repo_id}@{r.revision}" in config.load().get("trusted", [])
+def is_trusted(resolved: Resolved) -> bool:
+    return not resolved.family.runs_repo_code or f"{resolved.repo_id}@{resolved.revision}" in config.load().get(
+        "trusted", []
+    )
 
 
-def trust(r: Resolved) -> None:
-    key = f"{r.repo_id}@{r.revision}"
+def trust(resolved: Resolved) -> None:
+    key = f"{resolved.repo_id}@{resolved.revision}"
     with config.edit() as data:
         if key not in data.setdefault("trusted", []):
             data["trusted"].append(key)

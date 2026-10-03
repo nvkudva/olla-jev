@@ -57,11 +57,11 @@ def free_memory(device: str) -> int:
     return psutil.virtual_memory().available
 
 
-def canonical(r: store.Resolved) -> str:
+def canonical(resolved: store.Resolved) -> str:
     """One name per weight file: `repo`, `repo:QUANT` or `repo:fp16`, whatever spelling the request used."""
-    if r.weights is None:
-        return r.repo_id
-    return f"{r.repo_id}:{names.label_of(r.weights)}"
+    if resolved.weights is None:
+        return resolved.repo_id
+    return f"{resolved.repo_id}:{names.label_of(resolved.weights)}"
 
 
 def default_model() -> str:
@@ -103,8 +103,8 @@ class Manager:
             raise NotDownloaded(str(exc)) from None
 
     def get(self, name: str | None, keep_alive: float | None = None) -> Slot:
-        r = self.resolve(name)
-        key = canonical(r)
+        resolved = self.resolve(name)
+        key = canonical(resolved)
         with self._guard:
             slot = self._slots.get(key)
         if slot is None:
@@ -112,17 +112,17 @@ class Manager:
                 with self._guard:
                     slot = self._slots.get(key)
                 if slot is None:
-                    slot = self._load(key, r)
+                    slot = self._load(key, resolved)
         self._touch(slot, keep_alive)
         return slot
 
-    def _load(self, key: str, r: store.Resolved) -> Slot:
-        if not store.is_trusted(r):
+    def _load(self, key: str, resolved: store.Resolved) -> Slot:
+        if not store.is_trusted(resolved):
             raise NotTrusted(
-                f"{key} runs Python code from its repo at {r.revision[:12]}; review it, then run: "
+                f"{key} runs Python code from its repo at {resolved.revision[:12]}; review it, then run: "
                 f"ollajev pull {key} --trust"
             )
-        path = store.local_path(r)
+        path = store.local_path(resolved)
         if path is None:
             raise NotDownloaded(f"{key} is not downloaded; run: ollajev pull {key}")
         while True:
@@ -140,10 +140,10 @@ class Manager:
             )
         log.info("loading %s on %s", key, device)
         started = time.monotonic()
-        adapter = r.family.load(path, r, device)
+        adapter = resolved.family.load(path, resolved, device)
         adapter.name = key
         log.info("loaded %s in %.1fs", key, time.monotonic() - started)
-        slot = Slot(key, adapter, r, getattr(adapter, "device", None) or device)
+        slot = Slot(key, adapter, resolved, getattr(adapter, "device", None) or device)
         with self._guard:
             self._slots[key] = slot
         return slot

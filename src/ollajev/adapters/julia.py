@@ -18,16 +18,16 @@ class _Julia:
     name = "julia"
     runs_repo_code = True
 
-    def limits(self, r) -> dict:
+    def limits(self, resolved) -> dict:
         return LIMITS
 
     def matches(self, repo_id: str, files: list[str]) -> bool:
         return "julia_config.json" in files
 
-    def allow_patterns(self, r) -> list[str]:
+    def allow_patterns(self, resolved) -> list[str]:
         return ["*.json", "*.safetensors", "julia/*.py", "julia/router/*.py", "encoder/*", "tokenizer/*"]
 
-    def load(self, path: str, r, device: str | None) -> Loaded:
+    def load(self, path: str, resolved, device: str | None) -> Loaded:
         load_model = import_from(path, "julia").load_model
         # The fast path rewrites ModernBERT's forward around a private method transformers 5.1 removed;
         # the stock forward gives the same outputs.
@@ -41,7 +41,14 @@ class _Julia:
             converted = {name: _question(name, question) for name, question in questions.items()}
             return engine.predict(state=state, questions=converted)
 
-        return Loaded(r.name, "Julia mmBERT-small typed-decision encoder", None, self.limits(r), predict, device=device)
+        return Loaded(
+            resolved.name,
+            "Julia mmBERT-small typed-decision encoder",
+            None,
+            self.limits(resolved),
+            predict,
+            device=device,
+        )
 
 
 def _question(name: str, question: dict[str, Any]) -> dict[str, Any]:

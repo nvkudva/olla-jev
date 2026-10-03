@@ -372,7 +372,7 @@ class Models(App[bool]):
                     for v in self.quants[repo]
                     if v.name not in curated
                 ]
-        listed = {r[0] for r in rows}
+        listed = {row[0] for row in rows}
         rows += [
             (name, True, f"{m['size'] / 1e9:.1f} GB", m["details"]["family"])
             for name, m in have.items()
@@ -447,29 +447,29 @@ class Models(App[bool]):
             self.notify("Only downloads can be cancelled", severity="warning")
 
     async def fetch(self, name: str) -> store.Resolved | None:
-        r = await asyncio.to_thread(lambda: store.resolve(lookup(name)))
-        if r.family.runs_repo_code and not store.is_trusted(r):
-            code = sorted(f for f in r.files if f.endswith(".py"))
+        resolved = await asyncio.to_thread(lambda: store.resolve(lookup(name)))
+        if resolved.family.runs_repo_code and not store.is_trusted(resolved):
+            code = sorted(f for f in resolved.files if f.endswith(".py"))
             body = (
-                f"{canonical(r)} runs Python code from its Hugging Face repo, with your user's privileges.\n\n"
-                f"commit  {r.revision}\nreview  https://huggingface.co/{r.repo_id}/tree/{r.revision}\n"
+                f"{canonical(resolved)} runs Python code from its Hugging Face repo, with your user's privileges.\n\n"
+                f"commit  {resolved.revision}\nreview  https://huggingface.co/{resolved.repo_id}/tree/{resolved.revision}\n"
                 f"files   {', '.join(code[:6])}{' …' if len(code) > 6 else ''}\n\nTrust this exact commit?"
             )
             if not await self.push_screen_wait(Confirm("This model runs repo code", body)):
                 self.notify("Not trusted; nothing downloaded", severity="warning")
                 return None
-            store.trust(r)
-        self.say(f"Downloading {canonical(r)} …")
+            store.trust(resolved)
+        self.say(f"Downloading {canonical(resolved)} …")
         self.downloading = True
         try:
-            await asyncio.to_thread(store.download, r, self.cancel)
+            await asyncio.to_thread(store.download, resolved, self.cancel)
         finally:
             self.downloading = False
-        prefetch = getattr(r.family, "prefetch", None)
+        prefetch = getattr(resolved.family, "prefetch", None)
         if prefetch:
             self.say("Downloading the base model …")
-            await asyncio.to_thread(prefetch, store.local_path(r))
-        return r
+            await asyncio.to_thread(prefetch, store.local_path(resolved))
+        return resolved
 
     # ---- actions ----------------------------------------------------------------------------------
 
@@ -481,9 +481,9 @@ class Models(App[bool]):
             return
 
         async def use() -> None:
-            if r := await self.fetch(name):
-                config.update(default_model=canonical(r))
-                self.notify(f"{canonical(r)} is now the default")
+            if resolved := await self.fetch(name):
+                config.update(default_model=canonical(resolved))
+                self.notify(f"{canonical(resolved)} is now the default")
 
         await self.job(f"Preparing {name} …", use)
 
@@ -492,8 +492,8 @@ class Models(App[bool]):
         if name := self.selected():
 
             async def pull() -> None:
-                if r := await self.fetch(name):
-                    self.notify(f"Downloaded {canonical(r)}")
+                if resolved := await self.fetch(name):
+                    self.notify(f"Downloaded {canonical(resolved)}")
 
             await self.job(f"Preparing {name} …", pull)
 
@@ -503,8 +503,8 @@ class Models(App[bool]):
         if name:
 
             async def pull() -> None:
-                if r := await self.fetch(name):
-                    self.notify(f"Downloaded {canonical(r)}")
+                if resolved := await self.fetch(name):
+                    self.notify(f"Downloaded {canonical(resolved)}")
 
             await self.job(f"Preparing {name} …", pull)
 
@@ -571,7 +571,7 @@ class Models(App[bool]):
         if not name:
             return
         try:
-            r = store.resolve(lookup(name), online=False)
+            resolved = store.resolve(lookup(name), online=False)
         except (LookupError, ValueError):
             entry = next((e for e in CATALOG if e.name == name), None)
             await self.push_screen_wait(
@@ -580,13 +580,13 @@ class Models(App[bool]):
                 )
             )
             return
-        trusted = store.trust_label(r)
-        limits = ", ".join(f"{k} {v}" for k, v in r.family.limits(r).items()) or "none recorded"
+        trusted = store.trust_label(resolved)
+        limits = ", ".join(f"{k} {v}" for k, v in resolved.family.limits(resolved).items()) or "none recorded"
         body = (
-            f"family   {r.family.name}\ncommit   {r.revision}\nfile     {r.weights or 'safetensors'}\n"
-            f"code     {trusted}\nlimits   {limits}\npath     {store.local_path(r)}"
+            f"family   {resolved.family.name}\ncommit   {resolved.revision}\nfile     {resolved.weights or 'safetensors'}\n"
+            f"code     {trusted}\nlimits   {limits}\npath     {store.local_path(resolved)}"
         )
-        await self.push_screen_wait(Info(canonical(r), body))
+        await self.push_screen_wait(Info(canonical(resolved), body))
 
     @work
     async def action_options(self) -> None:

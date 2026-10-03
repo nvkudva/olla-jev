@@ -25,14 +25,14 @@ from ..manager import canonical, canonical_or, default_model, lookup
 # ---- model management -----------------------------------------------------------------------------
 
 
-def confirm_trust(r: store.Resolved, assume_yes: bool) -> None:
+def confirm_trust(resolved: store.Resolved, assume_yes: bool) -> None:
     """Families that import Python from the model repo run it with your privileges. Ask once per commit."""
-    if store.is_trusted(r):
+    if store.is_trusted(resolved):
         return
-    code = sorted(f for f in r.files if f.endswith(".py"))
-    print(f"\n{canonical(r)} runs Python code from its Hugging Face repo, with your user's privileges.")
-    print(f"  commit  {r.revision}")
-    print(f"  review  https://huggingface.co/{r.repo_id}/tree/{r.revision}")
+    code = sorted(f for f in resolved.files if f.endswith(".py"))
+    print(f"\n{canonical(resolved)} runs Python code from its Hugging Face repo, with your user's privileges.")
+    print(f"  commit  {resolved.revision}")
+    print(f"  review  https://huggingface.co/{resolved.repo_id}/tree/{resolved.revision}")
     if code:
         print(f"  files   {', '.join(code[:8])}{' …' if len(code) > 8 else ''}")
     if not assume_yes:
@@ -40,20 +40,20 @@ def confirm_trust(r: store.Resolved, assume_yes: bool) -> None:
             raise SystemExit("not trusted; review the code, then pull again with --trust")
         if input("\nTrust this exact commit? Type 'yes': ").strip() != "yes":
             raise SystemExit("not trusted; nothing downloaded")
-    store.trust(r)
+    store.trust(resolved)
 
 
 def pull(name: str, trust: bool = False) -> store.Resolved:
-    r = store.resolve(lookup(name))
-    confirm_trust(r, trust)
-    print(f"==> pulling {canonical(r)} ({r.family.name}) at {r.revision[:12]}", flush=True)
-    store.download(r)
-    prefetch = getattr(r.family, "prefetch", None)
+    resolved = store.resolve(lookup(name))
+    confirm_trust(resolved, trust)
+    print(f"==> pulling {canonical(resolved)} ({resolved.family.name}) at {resolved.revision[:12]}", flush=True)
+    store.download(resolved)
+    prefetch = getattr(resolved.family, "prefetch", None)
     if prefetch:
         print("==> pulling base model", flush=True)
-        prefetch(store.local_path(r))
-    print(f"==> success: {canonical(r)}", flush=True)
-    return r
+        prefetch(store.local_path(resolved))
+    print(f"==> success: {canonical(resolved)}", flush=True)
+    return resolved
 
 
 def cmd_pull(args: argparse.Namespace) -> None:
@@ -80,19 +80,19 @@ def cmd_list(args: argparse.Namespace) -> None:
 
 def cmd_show(args: argparse.Namespace) -> None:
     try:
-        r = store.resolve(lookup(args.model), online=False)
+        resolved = store.resolve(lookup(args.model), online=False)
     except LookupError as exc:
         raise SystemExit(str(exc)) from None
-    print(f"  model        {canonical(r)}")
-    print(f"  family       {r.family.name}")
-    print(f"  revision     {r.revision}")
-    if r.weights:
-        print(f"  file         {r.weights}")
-    print(f"  released     {store.released(r.repo_id) or '-'}")
-    print(f"  repo code    {store.trust_label(r)}")
-    for key, value in r.family.limits(r).items():
+    print(f"  model        {canonical(resolved)}")
+    print(f"  family       {resolved.family.name}")
+    print(f"  revision     {resolved.revision}")
+    if resolved.weights:
+        print(f"  file         {resolved.weights}")
+    print(f"  released     {store.released(resolved.repo_id) or '-'}")
+    print(f"  repo code    {store.trust_label(resolved)}")
+    for key, value in resolved.family.limits(resolved).items():
         print(f"  {key:<12} {value}")
-    print(f"  path         {store.local_path(r)}")
+    print(f"  path         {store.local_path(resolved)}")
 
 
 def cmd_rm(args: argparse.Namespace) -> None:
@@ -205,11 +205,13 @@ def cmd_serve(args: argparse.Namespace) -> None:
     config.update(server_url=base)
 
     try:
-        r = store.resolve(lookup(model), online=False)
-        if store.is_trusted(r):
-            api.preload = canonical(r)
+        resolved = store.resolve(lookup(model), online=False)
+        if store.is_trusted(resolved):
+            api.preload = canonical(resolved)
         else:
-            print(f"==> {canonical(r)} runs repo code and is not trusted yet; run: ollajev pull {canonical(r)}")
+            print(
+                f"==> {canonical(resolved)} runs repo code and is not trusted yet; run: ollajev pull {canonical(resolved)}"
+            )
     except LookupError:
         print(f"==> {model} is not downloaded; serving without a model. Pull one with: ollajev pull {model}")
     if api.preload:
@@ -311,17 +313,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-V", "--version", action="version", version=f"ollajev {version('ollajev')}")
     parser.set_defaults(func=cmd_serve, model=None)
 
-    def serve_options(p: argparse.ArgumentParser) -> None:
-        p.add_argument("--host", help="bind address (default: 127.0.0.1, or OLLAJEV_HOST)")
-        p.add_argument("--port", type=int, help="port (default: the first free one from 8000)")
-        p.add_argument("--no-browser", action="store_true", help="do not open the demo page")
-        p.add_argument("--log-file", help="request and error log (default: server.log in the OS log folder)")
+    def serve_options(command_parser: argparse.ArgumentParser) -> None:
+        command_parser.add_argument("--host", help="bind address (default: 127.0.0.1, or OLLAJEV_HOST)")
+        command_parser.add_argument("--port", type=int, help="port (default: the first free one from 8000)")
+        command_parser.add_argument("--no-browser", action="store_true", help="do not open the demo page")
+        command_parser.add_argument(
+            "--log-file", help="request and error log (default: server.log in the OS log folder)"
+        )
 
     serve_options(parser)
     sub = parser.add_subparsers(dest="command", metavar="<command>", title="commands")
 
     def command(name: str, help_text: str, example: str, func, aliases: tuple[str, ...] = ()):
-        p = sub.add_parser(
+        command_parser = sub.add_parser(
             name,
             help=help_text,
             description=help_text,
@@ -329,12 +333,14 @@ def build_parser() -> argparse.ArgumentParser:
             epilog=f"example:\n  {example}",
             formatter_class=formatter,
         )
-        p.set_defaults(func=func)
-        return p
+        command_parser.set_defaults(func=func)
+        return command_parser
 
-    p = command("serve", "start the server", "ollajev serve Mapika/decider-4b-GGUF:Q4_K_M --port 8000", cmd_serve)
-    p.add_argument("model", nargs="?", help="model to load at start (default: the saved default)")
-    serve_options(p)
+    command_parser = command(
+        "serve", "start the server", "ollajev serve Mapika/decider-4b-GGUF:Q4_K_M --port 8000", cmd_serve
+    )
+    command_parser.add_argument("model", nargs="?", help="model to load at start (default: the saved default)")
+    serve_options(command_parser)
 
     serve_options(
         command(
@@ -346,35 +352,37 @@ def build_parser() -> argparse.ArgumentParser:
         )
     )
 
-    p = command("run", "ask a model questions from the terminal", "ollajev run SupersonicLabs/Julia-1", cmd_run)
-    p.add_argument("model", nargs="?", help="model (default: the saved default)")
+    command_parser = command(
+        "run", "ask a model questions from the terminal", "ollajev run SupersonicLabs/Julia-1", cmd_run
+    )
+    command_parser.add_argument("model", nargs="?", help="model (default: the saved default)")
 
-    p = command("pull", "download models", "ollajev pull Mapika/decider-2b-GGUF:Q8_0 --trust", cmd_pull)
-    p.add_argument("model", nargs="+", help="<user>/<repo>[:<quant>|:<file.gguf>]")
-    p.add_argument("--trust", action="store_true", help="trust the repo's Python code without asking")
+    command_parser = command("pull", "download models", "ollajev pull Mapika/decider-2b-GGUF:Q8_0 --trust", cmd_pull)
+    command_parser.add_argument("model", nargs="+", help="<user>/<repo>[:<quant>|:<file.gguf>]")
+    command_parser.add_argument("--trust", action="store_true", help="trust the repo's Python code without asking")
 
     command("list", "list downloaded models", "ollajev list", cmd_list, aliases=("ls",))
     command("ps", "list loaded models", "ollajev ps", cmd_ps)
 
-    p = command(
+    command_parser = command(
         "show", "show a model's family, pinned commit and limits", "ollajev show SupersonicLabs/Julia-1", cmd_show
     )
-    p.add_argument("model")
+    command_parser.add_argument("model")
 
-    p = command("rm", "delete downloaded models", "ollajev rm jaredpalmer/kev-0.6b", cmd_rm)
-    p.add_argument("model", nargs="+")
+    command_parser = command("rm", "delete downloaded models", "ollajev rm jaredpalmer/kev-0.6b", cmd_rm)
+    command_parser.add_argument("model", nargs="+")
 
-    p = command("stop", "unload a running model", "ollajev stop SupersonicLabs/Julia-1", cmd_stop)
-    p.add_argument("model")
+    command_parser = command("stop", "unload a running model", "ollajev stop SupersonicLabs/Julia-1", cmd_stop)
+    command_parser.add_argument("model")
 
-    p = command("cp", "give a model another name", "ollajev cp SupersonicLabs/Julia-1 julia", cmd_cp)
-    p.add_argument("source")
-    p.add_argument("destination")
+    command_parser = command("cp", "give a model another name", "ollajev cp SupersonicLabs/Julia-1 julia", cmd_cp)
+    command_parser.add_argument("source")
+    command_parser.add_argument("destination")
 
-    p = command(
+    command_parser = command(
         "service", "run the server in the background at login (macOS, Linux)", "ollajev service install", cmd_service
     )
-    p.add_argument("action", choices=["install", "uninstall", "status", "logs"])
+    command_parser.add_argument("action", choices=["install", "uninstall", "status", "logs"])
     return parser
 
 

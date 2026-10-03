@@ -34,8 +34,8 @@ class _Laya:
     # A quantized ONNX copy runs with the base repo's config and tokenizer.
     base_files = BASE_FILES
 
-    def limits(self, r) -> dict:
-        repo = r.base.repo_id if r.base else r.repo_id
+    def limits(self, resolved) -> dict:
+        repo = resolved.base.repo_id if resolved.base else resolved.repo_id
         return {"max_tokens": CONTEXT.get(repo, 1024)}
 
     def matches(self, repo_id: str, files: list[str]) -> bool:
@@ -49,16 +49,16 @@ class _Laya:
         parts = any(f.startswith(weights) and ".part" in f for f in files)
         return not split and not parts
 
-    def allow_patterns(self, r) -> list[str]:
+    def allow_patterns(self, resolved) -> list[str]:
         return ALLOW
 
-    def load(self, path: str, r, device: str | None) -> Loaded:
-        if r.weights:
+    def load(self, path: str, resolved, device: str | None) -> Loaded:
+        if resolved.weights:
             from .. import store
 
             # A copy's config and tokenizer come from its base's snapshot; the graph stays in the copy's.
-            config_dir = (store.local_path(r.base) if r.base else None) or path
-            agent = _onnx_agent(config_dir, os.path.join(path, r.weights))
+            config_dir = (store.local_path(resolved.base) if resolved.base else None) or path
+            agent = _onnx_agent(config_dir, os.path.join(path, resolved.weights))
             backend = runs_on = "onnxruntime"
         else:
             import laya
@@ -79,7 +79,14 @@ class _Laya:
                 qs[qid] = out
             return agent.system_one(state, qs)
 
-        return Loaded(r.name, f"Laya typed-decision encoder ({backend})", None, self.limits(r), predict, device=runs_on)
+        return Loaded(
+            resolved.name,
+            f"Laya typed-decision encoder ({backend})",
+            None,
+            self.limits(resolved),
+            predict,
+            device=runs_on,
+        )
 
 
 def _onnx_agent(config_dir: str, graph: str) -> Any:

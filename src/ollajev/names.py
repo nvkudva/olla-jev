@@ -55,14 +55,16 @@ def parse(name: str) -> Ref:
 
 def quant_of(filename: str) -> str | None:
     """`decider-4b-v2.1-Q4_K_M.gguf` or `laya_english_ud_q4_k_m.gguf` -> `Q4_K_M`."""
-    m = re.search(r"[._-]((?:I?Q\d[\w]*)|BF16|F16|F32)\.gguf$", filename, re.IGNORECASE)
-    return m.group(1).upper() if m else None
+    match = re.search(r"[._-]((?:I?Q\d[\w]*)|BF16|F16|F32)\.gguf$", filename, re.IGNORECASE)
+    return match.group(1).upper() if match else None
 
 
 def precision_of(filename: str) -> str | None:
     """`model_fp16.onnx`, `model-int8.onnx` or `laya.int8.onnx` -> `fp16` / `int8`; None for `model.onnx`."""
-    m = re.search(r"[._-](fp16|fp32|bf16|int8|uint8|int4|q4|q4f16|q8|bnb4|quantized)\.onnx$", filename, re.IGNORECASE)
-    return m.group(1).lower() if m else None
+    match = re.search(
+        r"[._-](fp16|fp32|bf16|int8|uint8|int4|q4|q4f16|q8|bnb4|quantized)\.onnx$", filename, re.IGNORECASE
+    )
+    return match.group(1).lower() if match else None
 
 
 def tag_of(filename: str) -> str | None:

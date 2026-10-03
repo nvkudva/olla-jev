@@ -41,7 +41,7 @@ class _Clef:
     name = "clef"
     runs_repo_code = False
 
-    def limits(self, r) -> dict:
+    def limits(self, resolved) -> dict:
         return LIMITS
 
     def matches(self, repo_id: str, files: list[str]) -> bool:
@@ -51,10 +51,10 @@ class _Clef:
         scripts = [f for f in files if f.endswith(".py") and f != "joint_schema_model.py"]
         return official and not scripts and "recipe.yaml" not in files
 
-    def allow_patterns(self, r) -> list[str]:
+    def allow_patterns(self, resolved) -> list[str]:
         return ["*.json", "*.safetensors", "*.jinja", "tokenizer*"]
 
-    def load(self, path: str, r, device: str | None) -> Loaded:
+    def load(self, path: str, resolved, device: str | None) -> Loaded:
         import torch
 
         from .._vendor.clef import joint_schema_model as clef
@@ -82,7 +82,12 @@ class _Clef:
             return {"answers": answers, "usage": {"input_tokens": len(enc.input_ids), "output_tokens": 0}}
 
         return Loaded(
-            r.name, f"Clef joint schema model (PyTorch {device})", None, self.limits(r), predict, device=device
+            resolved.name,
+            f"Clef joint schema model (PyTorch {device})",
+            None,
+            self.limits(resolved),
+            predict,
+            device=device,
         )
 
 

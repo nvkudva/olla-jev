@@ -47,12 +47,12 @@ def temperatures(config_dir: str, gguf: str | None = None) -> tuple[float, float
     return float(values.get("temperature", 1.0)), None if knockout is None else float(knockout)
 
 
-def question(qid: str, q: dict[str, Any]) -> dict[str, Any]:
+def question(qid: str, question_spec: dict[str, Any]) -> dict[str, Any]:
     """A wire question in the runtime's form: instructions always present, choice criteria as a dict."""
-    crit = q.get("criteria")
-    if q["type"] == "choice" and isinstance(crit, list):
+    crit = question_spec.get("criteria")
+    if question_spec["type"] == "choice" and isinstance(crit, list):
         crit = dict.fromkeys(crit)
-    return {"type": q["type"], "instructions": instructions_or_name(qid, q), "criteria": crit}
+    return {"type": question_spec["type"], "instructions": instructions_or_name(qid, question_spec), "criteria": crit}
 
 
 def softmax(logits: list[float], temperature: float) -> list[float]:
@@ -133,35 +133,35 @@ class _Llama:
 
     def __init__(self, gguf_path: str, n_ctx: int = MAX_TOKENS):
         global _quiet_callback
-        import llama_cpp as L
+        import llama_cpp as llama
 
-        self.L = L
+        self.llama = llama
         if _quiet_callback is None:  # llama.cpp logs to stderr process-wide; the callback must stay referenced
-            _quiet_callback = L.llama_log_callback(lambda level, text, data: None)
-            L.llama_log_set(_quiet_callback, ctypes.c_void_p(0))
-        L.llama_backend_init()
-        mp = L.llama_model_default_params()
+            _quiet_callback = llama.llama_log_callback(lambda level, text, data: None)
+            llama.llama_log_set(_quiet_callback, ctypes.c_void_p(0))
+        llama.llama_backend_init()
+        mp = llama.llama_model_default_params()
         mp.n_gpu_layers = -1
-        model = L.llama_model_load_from_file(os.fsencode(gguf_path), mp)
+        model = llama.llama_model_load_from_file(os.fsencode(gguf_path), mp)
         if not model:
             raise RuntimeError(f"llama.cpp could not load {gguf_path}")
         self.model = model
-        cp = L.llama_context_default_params()
+        cp = llama.llama_context_default_params()
         # llama.cpp aborts when one decode exceeds n_batch, so a whole prompt fits in one batch.
         cp.n_ctx = cp.n_batch = n_ctx
         cp.n_ubatch = 2048
         cp.n_seq_max = 1
-        ctx = L.llama_init_from_model(model, cp)
+        ctx = llama.llama_init_from_model(model, cp)
         if not ctx:
-            L.llama_model_free(model)
+            llama.llama_model_free(model)
             raise RuntimeError("llama.cpp could not create a context")
         self.ctx = ctx
-        vocab = L.llama_model_get_vocab(model)
+        vocab = llama.llama_model_get_vocab(model)
         if not vocab:
             raise RuntimeError("llama.cpp found no vocabulary in the GGUF")
         self.vocab = vocab
-        self.n_vocab = L.llama_vocab_n_tokens(self.vocab)
-        self.batch = L.llama_batch_init(n_ctx, 0, 1)
+        self.n_vocab = llama.llama_vocab_n_tokens(self.vocab)
+        self.batch = llama.llama_batch_init(n_ctx, 0, 1)
         self.n_ctx = n_ctx
         self.lock = threading.Lock()
         slots = [self.encode(letter) for letter in prompt.LETTERS]
@@ -172,33 +172,33 @@ class _Llama:
     def encode(self, text: str) -> list[int]:
         """Tokens of `text` with special tokens parsed, so the chat markers stay single tokens."""
         data = text.encode()
-        buf = (self.L.llama_token * (len(data) + 8))()
-        n = self.L.llama_tokenize(self.vocab, data, len(data), buf, len(buf), False, True)
-        if n < 0:
+        buf = (self.llama.llama_token * (len(data) + 8))()
+        count = self.llama.llama_tokenize(self.vocab, data, len(data), buf, len(buf), False, True)
+        if count < 0:
             raise RuntimeError("llama.cpp could not tokenize the prompt")
-        return list(buf[:n])
+        return list(buf[:count])
 
     def letter_logits(self, ids: list[int], count: int) -> list[float]:
         if len(ids) > self.n_ctx:
             raise ValueError(f"the prompt is {len(ids)} tokens; this model takes at most {self.n_ctx}")
-        L, b = self.L, self.batch
+        llama, batch = self.llama, self.batch
         with self.lock:
-            L.llama_memory_clear(L.llama_get_memory(self.ctx), True)
+            llama.llama_memory_clear(llama.llama_get_memory(self.ctx), True)
             for i, t in enumerate(ids):
-                b.token[i], b.pos[i], b.n_seq_id[i], b.logits[i] = t, i, 1, False
-                b.seq_id[i][0] = 0
-            b.logits[len(ids) - 1] = True
-            b.n_tokens = len(ids)
-            if (rc := L.llama_decode(self.ctx, b)) != 0:
+                batch.token[i], batch.pos[i], batch.n_seq_id[i], batch.logits[i] = t, i, 1, False
+                batch.seq_id[i][0] = 0
+            batch.logits[len(ids) - 1] = True
+            batch.n_tokens = len(ids)
+            if (rc := llama.llama_decode(self.ctx, batch)) != 0:
                 raise RuntimeError(f"llama_decode returned {rc}")
-            row = ctypes.cast(L.llama_get_logits_ith(self.ctx, len(ids) - 1), ctypes.POINTER(ctypes.c_float))
+            row = ctypes.cast(llama.llama_get_logits_ith(self.ctx, len(ids) - 1), ctypes.POINTER(ctypes.c_float))
             return [float(row[s]) for s in self.slots[:count]]
 
     def close(self) -> None:
-        L = self.L
-        L.llama_batch_free(self.batch)
-        L.llama_free(self.ctx)
-        L.llama_model_free(self.model)
+        llama = self.llama
+        llama.llama_batch_free(self.batch)
+        llama.llama_free(self.ctx)
+        llama.llama_model_free(self.model)
 
 
 class _JevK5:
@@ -210,40 +210,40 @@ class _JevK5:
     def runs_weights(self, weights: str, files: list[str]) -> bool:
         return names.format_of(weights) == "gguf"
 
-    def limits(self, r) -> dict:
+    def limits(self, resolved) -> dict:
         return LIMITS
 
     def matches(self, repo_id: str, files: list[str]) -> bool:
         weights = any(f.endswith((".safetensors", ".gguf")) for f in files)
         return CONFIG in files and weights
 
-    def allow_patterns(self, r) -> list[str]:
-        if r.weights:
-            return [r.weights, CONFIG]
+    def allow_patterns(self, resolved) -> list[str]:
+        if resolved.weights:
+            return [resolved.weights, CONFIG]
         return ["*.safetensors", "*.json", "*.jinja"]
 
-    def load(self, path: str, r, device: str | None) -> Loaded:
-        if r.weights:
+    def load(self, path: str, resolved, device: str | None) -> Loaded:
+        if resolved.weights:
             from .. import store
 
-            config_dir = (store.local_path(r.base) if r.base else None) or path
-            engine: Any = _Llama(os.path.join(path, r.weights))
+            config_dir = (store.local_path(resolved.base) if resolved.base else None) or path
+            engine: Any = _Llama(os.path.join(path, resolved.weights))
             backend, device = "llama.cpp", "llama.cpp"
         else:
             config_dir = path
             device = device or "cpu"
             engine = _Torch(path, device)
             backend = f"PyTorch {device}"
-        temperature, knockout = temperatures(config_dir, r.weights)
+        temperature, knockout = temperatures(config_dir, resolved.weights)
 
         def predict(state: Any, questions: dict[str, dict[str, Any]]) -> dict[str, Any]:
             return system_one(engine.encode, engine.letter_logits, temperature, knockout, state, questions)
 
         return Loaded(
-            r.name,
+            resolved.name,
             f"JevK5 typed-decision model ({backend})",
             None,
-            self.limits(r),
+            self.limits(resolved),
             predict,
             close=getattr(engine, "close", None),
             device=device,

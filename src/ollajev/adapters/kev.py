@@ -17,13 +17,13 @@ class _Kev:
     name = "kev"
     runs_repo_code = False
 
-    def limits(self, r) -> dict:
+    def limits(self, resolved) -> dict:
         return LIMITS
 
     def matches(self, repo_id: str, files: list[str]) -> bool:
         return "head.pt" in files and "adapter_config.json" in files
 
-    def allow_patterns(self, r) -> list[str]:
+    def allow_patterns(self, resolved) -> list[str]:
         return ["*.json", "*.safetensors", "head.pt", "*.txt", "*.jinja"]
 
     def prefetch(self, path: str) -> None:
@@ -38,7 +38,7 @@ class _Kev:
             allow_patterns=["*.json", "*.safetensors", "*.txt", "*.jinja", "tokenizer*", "merges.txt", "vocab.json"],
         )
 
-    def load(self, path: str, r, device: str | None) -> Loaded:
+    def load(self, path: str, resolved, device: str | None) -> Loaded:
         import torch
 
         from .._vendor.kev.api import SystemOneRequest, to_answers, to_record
@@ -63,7 +63,7 @@ class _Kev:
                 "usage": {"input_tokens": len(enc["ids"]), "output_tokens": 0},
             }
 
-        return Loaded(r.name, f"Kev pointer head on {ck.meta.base}", None, self.limits(r), predict)
+        return Loaded(resolved.name, f"Kev pointer head on {ck.meta.base}", None, self.limits(resolved), predict)
 
 
 FAMILY = _Kev()

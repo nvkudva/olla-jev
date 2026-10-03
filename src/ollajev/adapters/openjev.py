@@ -18,16 +18,16 @@ class _OpenJev:
     name = "open-jev"
     runs_repo_code = True
 
-    def limits(self, r) -> dict:
+    def limits(self, resolved) -> dict:
         return LIMITS
 
     def matches(self, repo_id: str, files: list[str]) -> bool:
         return "open_jev_config.json" in files
 
-    def allow_patterns(self, r) -> None:
+    def allow_patterns(self, resolved) -> None:
         return None
 
-    def load(self, path: str, r, device: str | None) -> Loaded:
+    def load(self, path: str, resolved, device: str | None) -> Loaded:
         OpenJev = import_from(path, "typed_decisions.open_jev").OpenJev
         model = OpenJev.from_pretrained(path, device=device)
 
@@ -60,15 +60,16 @@ class _OpenJev:
                 ids.append(qid)
             out = model.decide(text_state(state), batch)
             answers = {}
-            for qid, k, a in zip(ids, keys, out, strict=False):
-                if k is not None:
-                    a = {**a, "probabilities": dict(zip(k, a["probabilities"].values(), strict=False))}
-                    if "choice" in a:
-                        a["choice"] = k[max(range(len(k)), key=lambda i: list(a["probabilities"].values())[i])]
-                answers[qid] = a
+            for qid, option_keys, answer in zip(ids, keys, out, strict=False):
+                if option_keys is not None:
+                    probabilities = dict(zip(option_keys, answer["probabilities"].values(), strict=False))
+                    answer = {**answer, "probabilities": probabilities}
+                    if "choice" in answer:
+                        answer["choice"] = max(probabilities, key=probabilities.__getitem__)
+                answers[qid] = answer
             return {"answers": answers}
 
-        return Loaded(r.name, "open-jev DeBERTa-v3 typed-decision encoder", None, self.limits(r), predict)
+        return Loaded(resolved.name, "open-jev DeBERTa-v3 typed-decision encoder", None, self.limits(resolved), predict)
 
 
 FAMILY = _OpenJev()

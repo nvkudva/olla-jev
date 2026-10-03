@@ -18,16 +18,16 @@ class _Intern:
     name = "intern-decision"
     runs_repo_code = True
 
-    def limits(self, r) -> dict:
+    def limits(self, resolved) -> dict:
         return LIMITS
 
     def matches(self, repo_id: str, files: list[str]) -> bool:
         return "inference.py" in files and "video_preprocessor_config.json" in files
 
-    def allow_patterns(self, r) -> None:
+    def allow_patterns(self, resolved) -> None:
         return None
 
-    def load(self, path: str, r, device: str | None) -> Loaded:
+    def load(self, path: str, resolved, device: str | None) -> Loaded:
         DecisionEngine = import_from(path, "inference").DecisionEngine
         device = device or "cpu"
         engine = DecisionEngine(path, device=device, dtype="float32" if device == "cpu" else "bfloat16")
@@ -46,7 +46,9 @@ class _Intern:
                 qs[qid] = out
             return engine.predict({"state": state, "questions": qs})
 
-        return Loaded(r.name, "Intern-Decision Qwen3.5 typed-decision model", None, self.limits(r), predict)
+        return Loaded(
+            resolved.name, "Intern-Decision Qwen3.5 typed-decision model", None, self.limits(resolved), predict
+        )
 
 
 FAMILY = _Intern()

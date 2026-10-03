@@ -40,22 +40,22 @@ class CopyRequest(BaseModel):
     destination: str
 
 
-def _describe(name: str, r: store.Resolved, size: int, modified: float) -> dict[str, Any]:
+def _describe(name: str, resolved: store.Resolved, size: int, modified: float) -> dict[str, Any]:
     return {
         "name": name,
         "model": name,
         "size": size,
         "modified_at": datetime.fromtimestamp(modified, UTC).isoformat(),
-        "digest": r.revision,
-        "description": DESCRIPTIONS.get(name, f"{r.family.name} typed-decision model"),
+        "digest": resolved.revision,
+        "description": DESCRIPTIONS.get(name, f"{resolved.family.name} typed-decision model"),
         # TypeSafe clients require a string; fall back to the download date for repos pinned offline.
-        "release_date": store.released(r.repo_id) or datetime.fromtimestamp(modified, UTC).date().isoformat(),
+        "release_date": store.released(resolved.repo_id) or datetime.fromtimestamp(modified, UTC).date().isoformat(),
         "details": {
-            "family": r.family.name,
-            "format": names.format_of(r.weights) if r.weights else "safetensors",
-            "quantization_level": names.tag_of(r.weights) if r.weights else None,
+            "family": resolved.family.name,
+            "format": names.format_of(resolved.weights) if resolved.weights else "safetensors",
+            "quantization_level": names.tag_of(resolved.weights) if resolved.weights else None,
         },
-        "limits": r.family.limits(r),
+        "limits": resolved.family.limits(resolved),
     }
 
 
@@ -72,16 +72,18 @@ def tags() -> list[dict[str, Any]]:
         local = names.labels(sorted(str(p.relative_to(snap)) for p in snap.glob("**/*")))
         for name in [f"{repo_id}:{tag}" for tag in local.values()] or [repo_id]:
             try:
-                r = store.resolve(name, online=False)
+                resolved = store.resolve(name, online=False)
             except (LookupError, ValueError):
                 continue
-            if r.weights:
+            if resolved.weights:
                 weight = sum(
-                    (snap / f).stat().st_size for f in [r.weights, *names.sidecars(r.weights)] if (snap / f).is_file()
+                    (snap / f).stat().st_size
+                    for f in [resolved.weights, *names.sidecars(resolved.weights)]
+                    if (snap / f).is_file()
                 )
             else:
                 weight = size
-            out.append(_describe(canonical(r), r, weight, modified))
+            out.append(_describe(canonical(resolved), resolved, weight, modified))
     return out
 
 
@@ -117,44 +119,44 @@ def api_ps() -> dict[str, Any]:
 @router.post("/show")
 def api_show(req: ModelRef) -> Any:
     try:
-        r = store.resolve(lookup(req.model), online=False)
+        resolved = store.resolve(lookup(req.model), online=False)
     except LookupError as exc:
         return JSONResponse(status_code=404, content={"error": str(exc)})
     return {
-        "model": canonical(r),
-        "repo": r.repo_id,
-        "revision": r.revision,
-        "file": r.weights,
-        "family": r.family.name,
-        "runs_repo_code": r.family.runs_repo_code,
-        "trusted": store.is_trusted(r),
-        "release_date": store.released(r.repo_id),
-        "limits": r.family.limits(r),
-        "path": store.local_path(r),
+        "model": canonical(resolved),
+        "repo": resolved.repo_id,
+        "revision": resolved.revision,
+        "file": resolved.weights,
+        "family": resolved.family.name,
+        "runs_repo_code": resolved.family.runs_repo_code,
+        "trusted": store.is_trusted(resolved),
+        "release_date": store.released(resolved.repo_id),
+        "limits": resolved.family.limits(resolved),
+        "path": store.local_path(resolved),
     }
 
 
-def report_bytes(r: store.Resolved, status: str, events: queue.Queue[dict[str, Any] | None]) -> None:
+def report_bytes(resolved: store.Resolved, status: str, events: queue.Queue[dict[str, Any] | None]) -> None:
     """Download `r`, putting a `completed`/`total` byte event on `events` as the cache grows."""
     done = threading.Event()
     try:
-        total = store.download_size(r)
+        total = store.download_size(resolved)
     except Exception:  # progress is optional; the download itself reports real errors
         total = 0
-    start = store.bytes_on_disk(r.repo_id)
+    start = store.bytes_on_disk(resolved.repo_id)
 
     def poll() -> None:
         last = -1
         while not done.wait(0.5):
-            completed = min(store.bytes_on_disk(r.repo_id) - start, total)
+            completed = min(store.bytes_on_disk(resolved.repo_id) - start, total)
             if completed != last:
                 last = completed
-                events.put({"status": status, "digest": r.revision, "total": total, "completed": completed})
+                events.put({"status": status, "digest": resolved.revision, "total": total, "completed": completed})
 
     if total:
         threading.Thread(target=poll, daemon=True).start()
     try:
-        store.download(r)
+        store.download(resolved)
     finally:
         done.set()
 
@@ -168,32 +170,32 @@ def api_pull(req: PullRequest) -> Any:
         key = None
         try:
             events.put({"status": "pulling manifest"})
-            r = store.resolve(lookup(req.model))
-            if r.family.runs_repo_code and not store.is_trusted(r):
+            resolved = store.resolve(lookup(req.model))
+            if resolved.family.runs_repo_code and not store.is_trusted(resolved):
                 events.put(
                     {
-                        "error": f"{canonical(r)} runs Python code from its repo; trust is not available over HTTP. "
-                        f"Review https://huggingface.co/{r.repo_id}/tree/{r.revision}, then run: "
-                        f"ollajev pull {canonical(r)} --trust"
+                        "error": f"{canonical(resolved)} runs Python code from its repo; trust is not available over HTTP. "
+                        f"Review https://huggingface.co/{resolved.repo_id}/tree/{resolved.revision}, then run: "
+                        f"ollajev pull {canonical(resolved)} --trust"
                     }
                 )
                 return
-            key = r.repo_id
+            key = resolved.repo_id
             with _pulling_guard:
                 busy = key in _pulling
                 _pulling.add(key)
             if busy:
                 key = None
-                events.put({"error": f"{r.repo_id} is already being pulled"})
+                events.put({"error": f"{resolved.repo_id} is already being pulled"})
                 return
-            status = f"downloading {r.repo_id}@{r.revision[:12]}"
-            events.put({"status": status, "digest": r.revision})
-            report_bytes(r, status, events)
-            prefetch = getattr(r.family, "prefetch", None)
+            status = f"downloading {resolved.repo_id}@{resolved.revision[:12]}"
+            events.put({"status": status, "digest": resolved.revision})
+            report_bytes(resolved, status, events)
+            prefetch = getattr(resolved.family, "prefetch", None)
             if prefetch:
                 events.put({"status": "downloading base model"})
-                prefetch(store.local_path(r))
-            events.put({"status": "success", "model": canonical(r)})
+                prefetch(store.local_path(resolved))
+            events.put({"status": "success", "model": canonical(resolved)})
         except (LookupError, ValueError) as exc:  # bad name or unknown model: safe to show
             events.put({"error": str(exc)})
         except Exception:
@@ -226,11 +228,11 @@ def api_delete(req: ModelRef) -> Any:
     if removed is not None:
         return {"status": "success"}
     try:
-        r = store.resolve(lookup(req.model), online=False)
+        resolved = store.resolve(lookup(req.model), online=False)
     except LookupError as exc:
         return JSONResponse(status_code=404, content={"error": str(exc)})
-    api.current_manager().unload(canonical(r))
-    return {"status": "success", "freed": store.remove(r)}
+    api.current_manager().unload(canonical(resolved))
+    return {"status": "success", "freed": store.remove(resolved)}
 
 
 @router.post("/copy")
@@ -246,7 +248,7 @@ def api_stop(req: ModelRef) -> Any:
     from . import api
 
     try:
-        r = store.resolve(lookup(req.model), online=False)
+        resolved = store.resolve(lookup(req.model), online=False)
     except LookupError as exc:
         return JSONResponse(status_code=404, content={"error": str(exc)})
-    return {"status": "success" if api.current_manager().unload(canonical(r)) else "not loaded"}
+    return {"status": "success" if api.current_manager().unload(canonical(resolved)) else "not loaded"}

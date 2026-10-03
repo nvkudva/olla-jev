@@ -48,16 +48,16 @@ class _Von:
     name = "von"
     runs_repo_code = False
 
-    def limits(self, r) -> dict:
+    def limits(self, resolved) -> dict:
         return LIMITS
 
     def matches(self, repo_id: str, files: list[str]) -> bool:
         return has(files, "option_marker.pt", "marker_calibration.json")
 
-    def allow_patterns(self, r) -> list[str]:
+    def allow_patterns(self, resolved) -> list[str]:
         return ALLOW
 
-    def load(self, path: str, r, device: str | None) -> Loaded:
+    def load(self, path: str, resolved, device: str | None) -> Loaded:
         from von.backends.option_marker_backend import OptionMarkerBackend
         from von.models import option_marker
 
@@ -75,7 +75,9 @@ class _Von:
             text = state if isinstance(state, (str, dict)) else text_state(state)
             return answers_from(backend.evaluate(text, questions_for(questions)))
 
-        return Loaded(r.name, "Von Option-Marker decision model, ModernBERT-large", None, self.limits(r), predict)
+        return Loaded(
+            resolved.name, "Von Option-Marker decision model, ModernBERT-large", None, self.limits(resolved), predict
+        )
 
 
 FAMILY = _Von()

@@ -29,15 +29,15 @@ def prompt(question: str, text: str, labels: list[str]) -> str:
     )
 
 
-def build(context: str, qid: str, q: dict[str, Any]) -> tuple[str, list[str]]:
+def build(context: str, qid: str, question: dict[str, Any]) -> tuple[str, list[str]]:
     """The model input for one wire question and the answer key of each substantive candidate."""
-    kind, text = q["type"], instructions_or_name(qid, q)
+    kind, text = question["type"], instructions_or_name(qid, question)
     if kind == "choice":
-        criteria = q.get("criteria") or {}
+        criteria = question.get("criteria") or {}
         keys = list(criteria)
         return prompt(text, context, [f"It is {criteria[k] or k}" for k in keys]), keys
     if kind == "score":
-        levels = q.get("criteria") or []
+        levels = question.get("criteria") or []
         labels = [f"{level} (Value: {i})" for i, level in enumerate(levels)]
         return prompt(text, context, labels), [str(i) for i in range(len(levels))]
     if kind == "noul":
@@ -46,29 +46,29 @@ def build(context: str, qid: str, q: dict[str, Any]) -> tuple[str, list[str]]:
     raise ValueError(f"question {qid!r}: unsupported type {kind!r}")
 
 
-def temperature(calibrator: dict[str, Any], k: int) -> float:
+def temperature(calibrator: dict[str, Any], kind: int) -> float:
     """Per-candidate-count temperature when fitted for k (abstention slot included), else the global one."""
     per_k = calibrator.get("per_k") or {}
-    if str(k) in per_k:
-        return float(per_k[str(k)])
+    if str(kind) in per_k:
+        return float(per_k[str(kind)])
     if "log_temperature" in calibrator:
         return math.exp(float(calibrator["log_temperature"]))
     return float(calibrator.get("temperature", 1.0))
 
 
-def shape(kind: str, keys: list[str], logits: list[float], t: float) -> dict[str, Any]:
+def shape(kind: str, keys: list[str], logits: list[float], temperature: float) -> dict[str, Any]:
     """Calibrated softmax over the candidates, then the answer over the substantive ones.
 
     The abstention mass is reported as p_abstain and left out of the answer, as the reference engine
     conditions noul and score on sufficient evidence."""
-    scaled = [x / t for x in logits]
+    scaled = [x / temperature for x in logits]
     top = max(scaled)
     exp = [math.exp(x - top) for x in scaled]
     total = sum(exp)
-    p = [x / total for x in exp]
-    substantive = sum(p[:-1]) or 1.0
-    probs = {k: x / substantive for k, x in zip(keys, p[:-1], strict=True)}
-    out: dict[str, Any] = {"p_abstain": p[-1]}
+    probabilities = [x / total for x in exp]
+    substantive = sum(probabilities[:-1]) or 1.0
+    probs = {k: x / substantive for k, x in zip(keys, probabilities[:-1], strict=True)}
+    out: dict[str, Any] = {"p_abstain": probabilities[-1]}
     if kind == "noul":
         out["noul"] = probs["true"]
     else:
@@ -82,16 +82,16 @@ class _Rlcd:
     name = "rlcd"
     runs_repo_code = False
 
-    def limits(self, r) -> dict:
+    def limits(self, resolved) -> dict:
         return LIMITS
 
     def matches(self, repo_id: str, files: list[str]) -> bool:
         return has(files, "bundle_manifest.json", "calibrator.json", "model.safetensors", "tokenizer.json")
 
-    def allow_patterns(self, r) -> list[str]:
+    def allow_patterns(self, resolved) -> list[str]:
         return ["*.json", "model.safetensors"]
 
-    def load(self, path: str, r, device: str | None) -> Loaded:
+    def load(self, path: str, resolved, device: str | None) -> Loaded:
         import torch
         from gliclass import GLiClassModel
         from transformers import AutoTokenizer
@@ -120,11 +120,13 @@ class _Rlcd:
                 raise RuntimeError("the model returned non-finite logits")
             answers = {}
             for row, (qid, (_, keys)) in enumerate(built.items()):
-                k = len(keys) + 1
-                answers[qid] = shape(questions[qid]["type"], keys, logits[row, :k].tolist(), temperature(calibrator, k))
+                slots = len(keys) + 1
+                answers[qid] = shape(
+                    questions[qid]["type"], keys, logits[row, :slots].tolist(), temperature(calibrator, slots)
+                )
             return {"answers": answers}
 
-        return Loaded(r.name, "OpenJev (Verdict) GLiClass ModernBERT decision encoder", None, LIMITS, predict)
+        return Loaded(resolved.name, "OpenJev (Verdict) GLiClass ModernBERT decision encoder", None, LIMITS, predict)
 
 
 FAMILY = _Rlcd()

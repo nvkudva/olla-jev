@@ -129,10 +129,10 @@ def _invalid(loc: list[str | int], msg: str, kind: str = "value_error", status: 
     return JSONResponse(status_code=status, content={"detail": [{"loc": loc, "msg": msg, "type": kind}]})
 
 
-def _wire(q: Question) -> dict[str, Any]:
-    out = q.model_dump(exclude_none=True)
-    if isinstance(q, ChoiceQuestion):
-        out["criteria"] = q.criteria  # keep None descriptions; exclude_none would drop those options
+def _wire(question: Question) -> dict[str, Any]:
+    out = question.model_dump(exclude_none=True)
+    if isinstance(question, ChoiceQuestion):
+        out["criteria"] = question.criteria  # keep None descriptions; exclude_none would drop those options
     return out
 
 
