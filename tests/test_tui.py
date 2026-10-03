@@ -135,3 +135,22 @@ def test_actions_wait_while_a_model_loads(app, monkeypatch, key):
     app.loading = "some/model"
     assert drive(app, [key]) == []
     assert app.return_value is None
+
+
+def test_quit_during_a_download_asks_first(app):
+    async def go():
+        async with app.run_test(size=(120, 36)) as pilot:
+            app.downloading = True
+            await pilot.press("q")
+            await pilot.pause()
+            assert type(app.screen).__name__ == "Confirm"
+            await pilot.press("n")
+            await pilot.pause()
+            assert app.return_value is None
+            await pilot.press("q")
+            await pilot.pause()
+            await pilot.press("y")
+            await pilot.pause()
+        return app.return_value
+
+    assert asyncio.run(go()) is False

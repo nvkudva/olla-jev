@@ -386,7 +386,12 @@ class Models(App[bool]):
         self.release()
         self.exit(True)
 
-    def action_quit_app(self) -> None:
+    @work
+    async def action_quit_app(self) -> None:
+        if self.downloading:
+            question = dialogs.Confirm("A download is running", "Quit anyway? The next pull resumes it.")
+            if not await self.push_screen_wait(question):
+                return
         # Stop a download at its next update. A loaded model is not unloaded: the process is about to end,
         # which frees it at once, while unloading it here would freeze the screen first.
         self.cancel.set()
