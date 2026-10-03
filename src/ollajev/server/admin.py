@@ -188,10 +188,9 @@ def _download_with_events(resolved: store.Resolved, events: queue.Queue[dict[str
     status = f"downloading {resolved.repo_id}@{resolved.revision[:12]}"
     events.put({"status": status, "digest": resolved.revision})
     report_bytes(resolved, status, events)
-    prefetch = getattr(resolved.family, "prefetch", None)
-    if prefetch:
+    if store.needs_prefetch(resolved):
         events.put({"status": "downloading base model"})
-        prefetch(store.local_path(resolved))
+        store.prefetch(resolved)
     events.put({"status": "success", "model": canonical(resolved)})
 
 

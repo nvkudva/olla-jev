@@ -48,10 +48,9 @@ def pull(name: str, trust: bool = False) -> store.Resolved:
     confirm_trust(resolved, trust)
     print(f"==> pulling {canonical(resolved)} ({resolved.family.name}) at {resolved.revision[:12]}", flush=True)
     store.download(resolved)
-    prefetch = getattr(resolved.family, "prefetch", None)
-    if prefetch:
+    if store.needs_prefetch(resolved):
         print("==> pulling base model", flush=True)
-        prefetch(store.local_path(resolved))
+        store.prefetch(resolved)
     print(f"==> success: {canonical(resolved)}", flush=True)
     return resolved
 

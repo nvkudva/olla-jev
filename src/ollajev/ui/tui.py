@@ -211,12 +211,11 @@ class Models(App[bool]):
         self.downloading = True
         try:
             await asyncio.to_thread(store.download, resolved, self.cancel)
+            if store.needs_prefetch(resolved):
+                self.say("Downloading the base model …")
+                await asyncio.to_thread(store.prefetch, resolved, self.cancel)
         finally:
             self.downloading = False
-        prefetch = getattr(resolved.family, "prefetch", None)
-        if prefetch:
-            self.say("Downloading the base model …")
-            await asyncio.to_thread(prefetch, store.local_path(resolved))
         return resolved
 
     # ---- actions ----------------------------------------------------------------------------------

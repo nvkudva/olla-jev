@@ -366,6 +366,16 @@ def download(resolved: Resolved, cancel: threading.Event | None = None) -> str:
     return path
 
 
+def prefetch(resolved: Resolved, cancel: threading.Event | None = None) -> None:
+    """Fetch the extra files some families need beyond the repo (kev's base model); see needs_prefetch.
+    Setting `cancel` aborts it with Cancelled."""
+    resolved.family.prefetch(local_path(resolved), tqdm_class=_cancellable(cancel))
+
+
+def needs_prefetch(resolved: Resolved) -> bool:
+    return hasattr(resolved.family, "prefetch")
+
+
 def download_size(resolved: Resolved) -> int:
     """Bytes `download` fetches for `r`'s own repo."""
     info = HfApi().model_info(resolved.repo_id, revision=resolved.revision, files_metadata=True)

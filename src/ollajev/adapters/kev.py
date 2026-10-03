@@ -26,8 +26,9 @@ class _Kev:
     def allow_patterns(self, resolved) -> list[str]:
         return ["*.json", "*.safetensors", "head.pt", "*.txt", "*.jinja"]
 
-    def prefetch(self, path: str) -> None:
-        """Download the base model head.pt names, so `pull` leaves nothing to fetch at load time."""
+    def prefetch(self, path: str, tqdm_class=None) -> None:
+        """Download the base model head.pt names, so `pull` leaves nothing to fetch at load time. It goes to the
+        default Hugging Face cache, where the vendored loader looks for it."""
         import torch
         from huggingface_hub import snapshot_download
 
@@ -36,6 +37,7 @@ class _Kev:
             meta["base"],
             revision=meta.get("base_revision"),
             allow_patterns=["*.json", "*.safetensors", "*.txt", "*.jinja", "tokenizer*", "merges.txt", "vocab.json"],
+            tqdm_class=tqdm_class,
         )
 
     def load(self, path: str, resolved, device: str | None) -> Loaded:
