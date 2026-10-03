@@ -39,8 +39,9 @@ def test_serve_key_returns_true(app):
     assert app.return_value is True
 
 
-def test_quit_key_returns_false(app):
-    drive(app, ["q"])
+@pytest.mark.parametrize("key", ["q", "ctrl+q"])
+def test_quit_keys_return_false(app, key):
+    drive(app, [key])
     assert app.return_value is False
 
 

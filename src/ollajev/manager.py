@@ -6,6 +6,7 @@ import contextlib
 import gc
 import logging
 import os
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -219,6 +220,8 @@ def check_limits(limits: dict[str, Any], questions: dict[str, dict[str, Any]]) -
 
 
 def _empty_device_cache() -> None:
+    if "torch" not in sys.modules:  # a GGUF or ONNX model never imported it; importing it now costs seconds
+        return
     with contextlib.suppress(Exception):  # cache release is best effort
         import torch
 

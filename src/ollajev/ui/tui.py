@@ -277,15 +277,18 @@ class Models(App[bool]):
             self.notify(reply["status"])
         elif self.local and self.local[0] == name:
             await asyncio.to_thread(self.release)
-            self.notify("unloaded")
+            self.notify(f"Unloaded {name}")
         else:
-            self.notify("not loaded")
+            self.notify(f"{name} is not loaded")
         self.reload()
 
     @work
     async def action_remove(self) -> None:
         name = self.selected()
-        if not name or not self.downloaded(name):
+        if not name:
+            return
+        if not self.downloaded(name):
+            self.notify(f"{name} is not downloaded; nothing to delete")
             return
         if not await self.push_screen_wait(
             dialogs.Confirm(f"Delete {name}?", "The downloaded weights are removed from disk.")
@@ -365,6 +368,10 @@ class Models(App[bool]):
     def action_quit_app(self) -> None:
         self.release()
         self.exit(False)
+
+    async def action_quit(self) -> None:
+        """ctrl+q: the same as q."""
+        self.action_quit_app()
 
 
 def manage() -> bool:

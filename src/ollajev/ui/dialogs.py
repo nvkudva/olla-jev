@@ -226,20 +226,26 @@ class Ask(ModalScreen[None]):
             yield Static("ctrl+r ask · esc close", classes="hint")
 
     def on_mount(self) -> None:
-        self.query_one("#answers", Static).update("Loading the model…")
+        self.show("Loading the model…")
         self.connect()
+
+    def show(self, text: str) -> None:
+        # A load or answer can finish after Esc closed this dialog; there is nothing left to update then.
+        if self.is_attached:
+            self.query_one("#answers", Static).update(text)
 
     @work(thread=True)
     def connect(self) -> None:
         try:
             self.ask = self.app.connection(self.model)  # type: ignore[attr-defined]
-            self.app.call_from_thread(self.query_one("#answers", Static).update, "Ready. Press ctrl+r to ask.")
+            self.app.call_from_thread(self.show, "Ready. Press ctrl+r to ask.")
         except Exception as exc:
             log.exception("could not load %s", self.model)
-            self.app.call_from_thread(self.query_one("#answers", Static).update, f"error: {exc}")
+            self.app.call_from_thread(self.show, f"error: {exc}")
 
     def action_send(self) -> None:
         if self.ask is None:
+            self.show("Still loading the model…")
             return
         state = self.query_one("#state", TextArea).text.strip()
         questions: dict[str, Any] = {}
@@ -263,7 +269,7 @@ class Ask(ModalScreen[None]):
         except Exception as exc:
             log.exception("ask failed")
             text = f"error: {exc}"
-        self.app.call_from_thread(self.query_one("#answers", Static).update, text)
+        self.app.call_from_thread(self.show, text)
 
     def action_close(self) -> None:
         self.dismiss(None)
