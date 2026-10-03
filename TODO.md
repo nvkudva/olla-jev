@@ -41,7 +41,7 @@
 - [ ] Implement `peft-pointer` adapter for kev-4b
 - [ ] Investigate Decision-1.0 Kai near-uniform score distributions
 - [ ] Julia-1 on MPS: its runtime leaves inputs on CPU; runs on CPU for now
-- [ ] Byte-level progress in /api/pull stream (now status lines only)
+- [x] Byte-level progress in /api/pull stream (now status lines only)
 - [x] Rename project to ollajev with src layout
 - [x] Config and logs in ~/.ollajev (OS folders via platformdirs until 0.2); logs out of the working directory
 - [x] Packaging metadata, PEP 735 dev group, ruff, pyright, pre-commit

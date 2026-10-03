@@ -134,6 +134,31 @@ def api_show(req: ModelRef) -> Any:
     }
 
 
+def report_bytes(r: store.Resolved, status: str, events: queue.Queue[dict[str, Any] | None]) -> None:
+    """Download `r`, putting a `completed`/`total` byte event on `events` as the cache grows."""
+    done = threading.Event()
+    try:
+        total = store.download_size(r)
+    except Exception:  # progress is optional; the download itself reports real errors
+        total = 0
+    start = store.bytes_on_disk(r.repo_id)
+
+    def poll() -> None:
+        last = -1
+        while not done.wait(0.5):
+            completed = min(store.bytes_on_disk(r.repo_id) - start, total)
+            if completed != last:
+                last = completed
+                events.put({"status": status, "digest": r.revision, "total": total, "completed": completed})
+
+    if total:
+        threading.Thread(target=poll, daemon=True).start()
+    try:
+        store.download(r)
+    finally:
+        done.set()
+
+
 @router.post("/pull")
 def api_pull(req: PullRequest) -> Any:
     """Download a model; with stream=true, NDJSON status lines like Ollama's pull."""
@@ -161,8 +186,9 @@ def api_pull(req: PullRequest) -> Any:
                 key = None
                 events.put({"error": f"{r.repo_id} is already being pulled"})
                 return
-            events.put({"status": f"downloading {r.repo_id}@{r.revision[:12]}", "digest": r.revision})
-            store.download(r)
+            status = f"downloading {r.repo_id}@{r.revision[:12]}"
+            events.put({"status": status, "digest": r.revision})
+            report_bytes(r, status, events)
             prefetch = getattr(r.family, "prefetch", None)
             if prefetch:
                 events.put({"status": "downloading base model"})

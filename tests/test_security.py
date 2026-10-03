@@ -233,3 +233,25 @@ def test_failed_download_leaves_no_pin(home, monkeypatch):
     monkeypatch.setattr(store, "snapshot_download", lambda *a, **k: "/x")
     store.download(r)
     assert store.pins() == {"u/r": "a" * 40} and store.released("u/r") == "2026-01-01"
+
+
+def test_pull_stream_reports_bytes_as_the_cache_grows(client, monkeypatch):
+    import json
+    import time
+
+    r = fake_resolved(runs_code=False)
+    grown = {"n": 0}
+    monkeypatch.setattr(store, "resolve", lambda *a, **k: r)
+    monkeypatch.setattr(store, "download_size", lambda r: 100)
+    monkeypatch.setattr(store, "bytes_on_disk", lambda repo_id: grown["n"])
+    monkeypatch.setattr(admin, "canonical", lambda r: r.repo_id)
+
+    def download(r):
+        grown["n"] = 60
+        time.sleep(1.2)
+
+    monkeypatch.setattr(store, "download", download)
+    out = client.post("/api/pull", json={"model": "user/repo", "stream": True})
+    events = [json.loads(line) for line in out.text.splitlines()]
+    assert any(e.get("total") == 100 and e.get("completed") == 60 for e in events)
+    assert events[-1]["status"] == "success"

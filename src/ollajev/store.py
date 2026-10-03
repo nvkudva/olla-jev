@@ -10,6 +10,8 @@ from pathlib import Path
 from huggingface_hub import CachedRevisionInfo, HfApi, HFCacheInfo, snapshot_download
 from huggingface_hub import scan_cache_dir as _scan_cache_dir
 from huggingface_hub.errors import CacheNotFound, LocalEntryNotFoundError, RepositoryNotFoundError
+from huggingface_hub.constants import HF_HUB_CACHE
+from huggingface_hub.file_download import repo_folder_name
 from huggingface_hub.utils import filter_repo_objects
 
 from . import config, names
@@ -322,6 +324,19 @@ def download(r: Resolved) -> str:
     if r.repo_id not in pins():
         _pin(r.repo_id, r.revision, r.created)
     return path
+
+
+def download_size(r: Resolved) -> int:
+    """Bytes `download` fetches for `r`'s own repo."""
+    info = HfApi().model_info(r.repo_id, revision=r.revision, files_metadata=True)
+    sizes = {s.rfilename: s.size or 0 for s in info.siblings or []}
+    return sum(sizes[f] for f in filter_repo_objects(list(sizes), allow_patterns=r.allow))
+
+
+def bytes_on_disk(repo_id: str) -> int:
+    """Bytes of `repo_id` in the cache, partial downloads included."""
+    blobs = Path(config.models_dir() or HF_HUB_CACHE) / repo_folder_name(repo_id=repo_id, repo_type="model") / "blobs"
+    return sum(p.stat().st_size for p in blobs.glob("*") if p.is_file()) if blobs.is_dir() else 0
 
 
 def downloaded() -> dict[str, tuple[int, float]]:
