@@ -251,3 +251,31 @@ def test_enter_in_a_confirm_takes_its_default():
 
     assert asyncio.run(go(True)) == [True]
     assert asyncio.run(go(False)) == [False]
+
+
+def test_ask_keeps_a_history_of_answers(monkeypatch):
+    monkeypatch.setattr(tui.repl, "format_answers", lambda answers: [f"answer {answers['n']}"])
+    replies = iter([{"answers": {"n": 1}}, {"answers": {"n": 2}}])
+
+    class Host(tui.App):
+        def connection(self, model):
+            return lambda state, questions: next(replies)
+
+        def on_mount(self):
+            self.push_screen(tui.dialogs.Ask("u/model"))
+
+    async def go():
+        app = Host()
+        async with app.run_test(size=(120, 40)) as pilot:
+            await app.workers.wait_for_complete()
+            app.screen.query_one("#state").text = "a state"
+            app.screen.query_one("#questions").text = "noul: is it?"
+            for _ in range(2):
+                await pilot.press("ctrl+s")
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+            return str(app.screen.query_one("#answers").render())
+
+    shown = asyncio.run(go())
+    assert shown.index("answer 2") < shown.index("answer 1")
+    assert "u/model ·" in shown

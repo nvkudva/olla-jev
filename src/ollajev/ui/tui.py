@@ -30,12 +30,12 @@ DataTable > .datatable--header { background: $surface; color: $text-muted; text-
 Footer { background: $surface; }
 
 ModalScreen { align: center middle; background: $background 60%; }
-.dialog { width: 68; height: auto; padding: 1 2; background: $panel; border: round $primary; }
+.dialog { width: 68; max-width: 96%; height: auto; padding: 1 2; background: $panel; border: round $primary; }
 .title { text-style: bold; margin-bottom: 1; }
 .hint { color: $text-muted; margin-top: 1; }
 .dialog Input, .dialog Select { margin-bottom: 1; }
 .dialog TextArea { height: 6; margin-bottom: 1; }
-#answers { height: auto; max-height: 12; }
+#answers-box { height: auto; max-height: 14; }
 .wide { width: 112; }
 #results { height: 20; }
 """

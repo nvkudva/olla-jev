@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any, ClassVar
 
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import DataTable, Input, Select, Static, TextArea
 
@@ -211,12 +212,13 @@ class Options(ModalScreen[dict[str, Any] | None]):
 class Ask(ModalScreen[None]):
     """Ask a model questions. One question per line, in the same form `ollajev run` takes."""
 
-    BINDINGS: ClassVar = [("escape", "close", "Close"), Binding("ctrl+r", "send", "Ask", priority=True)]
+    BINDINGS: ClassVar = [("escape", "close", "Close"), Binding("ctrl+s,ctrl+r", "send", "Ask", priority=True)]
 
     def __init__(self, model: str) -> None:
         super().__init__()
         self.model = model
         self.ask: Any = None
+        self.history: list[str] = []  # earlier answers, newest first, kept while the dialog is open
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog"):
@@ -225,11 +227,12 @@ class Ask(ModalScreen[None]):
             yield TextArea(id="state")
             yield Static("Questions, one per line")
             yield TextArea(
-                "noul: The customer asks for a refund.\nchoice: Which team? | billing, support, sales",
                 id="questions",
+                placeholder="noul: The customer asks for a refund.\nchoice: Which team? | billing, support, sales",
             )
-            yield Static("", id="answers")
-            yield Static("ctrl+r ask · esc close", classes="hint")
+            with VerticalScroll(id="answers-box"):
+                yield Static("", id="answers")
+            yield Static("ctrl+s ask · esc close", classes="hint")
 
     def on_mount(self) -> None:
         self.show("Loading the model…")
@@ -244,7 +247,7 @@ class Ask(ModalScreen[None]):
     def connect(self) -> None:
         try:
             self.ask = self.app.connection(self.model)  # type: ignore[attr-defined]
-            self.app.call_from_thread(self.show, "Ready. Press ctrl+r to ask.")
+            self.app.call_from_thread(self.show, "Ready. Press ctrl+s to ask.")
         except Exception as exc:
             log.exception("could not load %s", self.model)
             self.app.call_from_thread(self.show, f"error: {exc}")
@@ -270,12 +273,15 @@ class Ask(ModalScreen[None]):
 
     @work(thread=True, exclusive=True)
     def send(self, state: str, questions: dict[str, Any]) -> None:
+        started = time.monotonic()
         try:
             text = "\n".join(repl.format_answers(self.ask(state, questions)["answers"]))
         except Exception as exc:
             log.exception("ask failed")
             text = f"error: {exc}"
-        self.app.call_from_thread(self.show, text)
+        seconds = time.monotonic() - started
+        self.history.insert(0, f"── {self.model} · {seconds:.1f} s\n{text}")
+        self.app.call_from_thread(self.show, "\n\n".join(self.history))
 
     def action_close(self) -> None:
         self.dismiss(None)
