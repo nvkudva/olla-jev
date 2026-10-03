@@ -96,22 +96,13 @@ function failRequest(message) {
   return false;
 }
 
-/* CodeMirror mounts into qJsonHost from the module at the foot of this file. Until it has
-   loaded — or if the CDN is unreachable — `text` is the pane's only store. */
+/* The JSON view is a plain textarea: the page's CSP allows scripts only from this server, and it
+   works offline. */
 const jsonPane = {
-  editor: null,
-  text: "",
-  read() { return this.editor ? this.editor.state.doc.toString() : this.text; },
-  write(text) {
-    this.text = text;
-    if (!this.editor) return;
-    const current = this.editor.state.doc.toString();
-    if (current !== text) this.editor.dispatch({ changes: { from: 0, to: current.length, insert: text } });
-    this.editor.requestMeasure();
-  },
-  clearError() { requestError.hidden = true; },
-  fail(error) { failRequest(`JSON editor unavailable: ${error.message}`); },
+  read() { return qJsonHost.value; },
+  write(text) { qJsonHost.value = text; },
 };
+qJsonHost.addEventListener("input", () => { requestError.hidden = true; });
 
 function blankFor(type) {
   return {
@@ -619,71 +610,3 @@ fetch("/ui/presets").then((r) => r.json()).then((presets) => {
     store.set("ollajev.visited", true);
   }
 }).catch(() => {});
-
-/* ------------------------------------------------------------------------------
-   The JSON pane's CodeMirror instance.
-
-   The same component laya-web uses (see its src/JsonCode.tsx), loaded from esm.sh with every
-   package pinned to the concrete versions esm.sh resolves its own transitive imports to, so there
-   is exactly one copy of @codemirror/state in the graph and the extensions compose.
-   ------------------------------------------------------------------------------ */
-
-try {
-  const [{ EditorView }, { HighlightStyle, syntaxHighlighting }, { tags: t }, { json }, { basicSetup }] =
-    await Promise.all([
-      import("https://esm.sh/@codemirror/view@6.43.12"),
-      import("https://esm.sh/@codemirror/language@6.12.4"),
-      import("https://esm.sh/@lezer/highlight@1.2.3"),
-      import("https://esm.sh/@codemirror/lang-json@6.0.2"),
-      import("https://esm.sh/codemirror@6.0.2"),
-    ]);
-
-  // Colours reference the page's own custom properties, so light and dark follow the theme
-  // with no second palette to keep in sync.
-  const highlight = HighlightStyle.define([
-    { tag: [t.propertyName, t.definition(t.propertyName)], color: "var(--t-key)", fontWeight: "500" },
-    { tag: [t.string, t.special(t.string)], color: "var(--t-str)" },
-    { tag: t.number, color: "var(--t-num)" },
-    { tag: [t.bool, t.null, t.atom, t.keyword], color: "var(--t-lit)" },
-    { tag: [t.punctuation, t.separator, t.bracket, t.squareBracket, t.brace], color: "var(--t-punct)" },
-    { tag: t.invalid, color: "var(--warn)" },
-  ]);
-
-  const theme = EditorView.theme({
-    "&": { color: "var(--t-punct)", backgroundColor: "transparent", height: "100%", fontSize: "12.5px" },
-    ".cm-scroller": { fontFamily: "var(--mono)", lineHeight: "1.6", padding: "10px 0 14px" },
-    ".cm-content": { padding: "0 10px 0 4px", caretColor: "var(--ink)" },
-    ".cm-gutters": { backgroundColor: "transparent", border: "none", color: "var(--muted)", opacity: "0.65", paddingRight: "2px" },
-    ".cm-lineNumbers .cm-gutterElement": { padding: "0 6px 0 10px", minWidth: "2.5em" },
-    ".cm-activeLine": { backgroundColor: "color-mix(in srgb, var(--signal) 7%, transparent)" },
-    ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--ink)", opacity: "1" },
-    "&.cm-focused": { outline: "none" },
-    ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection": {
-      backgroundColor: "color-mix(in srgb, var(--signal) 26%, transparent)",
-    },
-    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--ink)", borderLeftWidth: "1.5px" },
-    ".cm-foldPlaceholder": {
-      backgroundColor: "transparent", border: "1px solid var(--rule)",
-      color: "var(--muted)", borderRadius: "2px", padding: "0 5px", margin: "0 2px",
-    },
-    ".cm-foldGutter .cm-gutterElement": { cursor: "pointer", color: "var(--muted)" },
-    ".cm-foldGutter .cm-gutterElement:hover": { color: "var(--ink)" },
-    ".cm-matchingBracket, &.cm-focused .cm-matchingBracket": {
-      backgroundColor: "color-mix(in srgb, var(--signal) 20%, transparent)", outline: "none",
-    },
-    ".cm-nonmatchingBracket": { backgroundColor: "transparent", color: "var(--warn)" },
-  });
-
-  jsonPane.editor = new EditorView({
-    parent: qJsonHost,
-    doc: jsonPane.text,
-    extensions: [
-      basicSetup, json(), theme, syntaxHighlighting(highlight),
-      EditorView.lineWrapping,
-      EditorView.updateListener.of((update) => { if (update.docChanged) jsonPane.clearError(); }),
-    ],
-  });
-  jsonPane.editor.requestMeasure();
-} catch (error) {
-  jsonPane.fail(error);
-}
