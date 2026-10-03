@@ -47,7 +47,9 @@ class _Kev:
 
         device = device or "cpu"
         # kev.serve's own defaults: bf16 off the CPU, sdpa attention on Apple GPUs.
-        opts = LoadOptions(dtype=None if device == "cpu" else torch.bfloat16, attn="sdpa" if device == "mps" else None)
+        dtype = None if device == "cpu" else torch.bfloat16
+        attention = "sdpa" if device == "mps" else None
+        opts = LoadOptions(dtype=dtype, attn=attention)
         ck = Checkpoint(path)
         tok, model = ck.load(device, opts)
 

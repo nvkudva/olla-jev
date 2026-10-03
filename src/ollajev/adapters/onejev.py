@@ -50,8 +50,20 @@ _SPLIT = {
     "IY",
 }
 _SPLIT |= {"JF", "JG", "JH", "JL", "JN", "JQ"}
+
+
 # A..Z, then the two-letter labels the Qwen tokenizer holds as one token: 255 slots, TypeSafe's choice limit.
-SLOTS = [*LETTERS, *[a + b for a in LETTERS for b in LETTERS if a + b not in _SPLIT]][:255]
+def _slots() -> list[str]:
+    slots = list(LETTERS)
+    for first in LETTERS:
+        for second in LETTERS:
+            label = first + second
+            if label not in _SPLIT:
+                slots.append(label)
+    return slots[:255]
+
+
+SLOTS = _slots()
 NOUL_INSTRUCTIONS = "Is the statement true, or is the answer to the question yes?"
 NOUL_TRUE = "the statement is true / the answer is yes"
 NOUL_FALSE = "the statement is false / the answer is no"

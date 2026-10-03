@@ -419,9 +419,10 @@ def remove(r: Resolved) -> int:
 def delete(repo_id: str) -> int:
     """Remove every downloaded revision of `repo_id` and forget its pin. Returns bytes freed."""
     info = scan_cache_dir(config.models_dir())
-    revisions = [
-        rev.commit_hash for repo in (info.repos if info else ()) if repo.repo_id == repo_id for rev in repo.revisions
-    ]
+    revisions = []
+    for repo in info.repos if info else ():
+        if repo.repo_id == repo_id:
+            revisions.extend(revision.commit_hash for revision in repo.revisions)
     freed = 0
     if info and revisions:
         strategy = info.delete_revisions(*revisions)
@@ -433,6 +434,15 @@ def delete(repo_id: str) -> int:
         data.get("bases", {}).pop(repo_id, None)
         data["trusted"] = [t for t in data.get("trusted", []) if not t.startswith(f"{repo_id}@")]
     return freed
+
+
+def trust_label(r: Resolved) -> str:
+    """How `show` and the model manager describe whether a model runs code from its repo."""
+    if not r.family.runs_repo_code:
+        return "no repo code"
+    if is_trusted(r):
+        return "trusted"
+    return "NOT trusted"
 
 
 def is_trusted(r: Resolved) -> bool:

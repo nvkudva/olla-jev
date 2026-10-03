@@ -89,9 +89,7 @@ def cmd_show(args: argparse.Namespace) -> None:
     if r.weights:
         print(f"  file         {r.weights}")
     print(f"  released     {store.released(r.repo_id) or '-'}")
-    print(
-        f"  repo code    {'yes, ' + ('trusted' if store.is_trusted(r) else 'NOT trusted') if r.family.runs_repo_code else 'no'}"
-    )
+    print(f"  repo code    {store.trust_label(r)}")
     for key, value in r.family.limits(r).items():
         print(f"  {key:<12} {value}")
     print(f"  path         {store.local_path(r)}")

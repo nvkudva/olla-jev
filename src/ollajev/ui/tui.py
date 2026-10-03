@@ -525,7 +525,8 @@ class Models(App[bool]):
         if not name:
             return
         if client.server_running():
-            self.notify(await asyncio.to_thread(lambda: client.call("POST", "/api/stop", {"model": name})["status"]))
+            reply = await asyncio.to_thread(client.call, "POST", "/api/stop", {"model": name})
+            self.notify(reply["status"])
         elif self.local and self.local[0] == name:
             await asyncio.to_thread(self.release)
             self.notify("unloaded")
@@ -545,9 +546,10 @@ class Models(App[bool]):
             if self.local and self.local[0] == name:
                 await asyncio.to_thread(self.release)
             if client.server_running():
-                await asyncio.to_thread(lambda: client.call("DELETE", "/api/delete", {"model": name}))
+                await asyncio.to_thread(client.call, "DELETE", "/api/delete", {"model": name})
             else:
-                await asyncio.to_thread(lambda: store.remove(store.resolve(lookup(name), online=False)))
+                resolved = await asyncio.to_thread(store.resolve, lookup(name), online=False)
+                await asyncio.to_thread(store.remove, resolved)
             self.notify(f"Deleted {name}")
 
         await self.job(f"Deleting {name} …", remove)
@@ -578,9 +580,7 @@ class Models(App[bool]):
                 )
             )
             return
-        trusted = (
-            "no repo code" if not r.family.runs_repo_code else ("trusted" if store.is_trusted(r) else "NOT trusted")
-        )
+        trusted = store.trust_label(r)
         limits = ", ".join(f"{k} {v}" for k, v in r.family.limits(r).items()) or "none recorded"
         body = (
             f"family   {r.family.name}\ncommit   {r.revision}\nfile     {r.weights or 'safetensors'}\n"

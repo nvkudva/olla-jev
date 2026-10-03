@@ -97,12 +97,17 @@ def labels(files: list[str]) -> dict[str, str]:
     """Each weight file's tag in `<repo>:<tag>`: its quant or precision when no other file shares it, else its
     file name, else its path in the repo."""
     found = weight_files(files)
-    tags = [tag_of(f) for f in found]
-    bases = [f.rsplit("/", 1)[-1] for f in found]
-    return {
-        f: t if t and tags.count(t) == 1 else b if bases.count(b) == 1 else f
-        for f, t, b in zip(found, tags, bases, strict=True)
-    }
+    tags = [tag_of(path) for path in found]
+    file_names = [path.rsplit("/", 1)[-1] for path in found]
+    result = {}
+    for path, tag, file_name in zip(found, tags, file_names, strict=True):
+        if tag and tags.count(tag) == 1:
+            result[path] = tag
+        elif file_names.count(file_name) == 1:
+            result[path] = file_name
+        else:
+            result[path] = path
+    return result
 
 
 def pick_weights(files: list[str], tag: str | None) -> str:
