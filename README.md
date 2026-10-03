@@ -200,7 +200,8 @@ Run `ollajev <command> --help` for options and an example.
 
 | Key | Same as | What it does |
 |---|---|---|
-| Enter | `pull` + default | download the model if needed and make it the default |
+| Enter | `pull` + default | download the model if needed (it asks first, with the size) and make it the default |
+| `d` | | make a downloaded model the default |
 | `p` | `pull` | download only |
 | `r` | `run` | ask the model questions |
 | `u` | `stop` | unload it from memory |

@@ -172,3 +172,9 @@ def test_a_failed_job_stays_on_the_status_line(app):
     status, screen = asyncio.run(go())
     assert "Downloading x failed" in status and "e for details" in status
     assert screen == "Info"
+
+
+def test_enter_asks_before_downloading(app, monkeypatch):
+    monkeypatch.setattr(tui.store, "download", lambda *a: pytest.fail("downloaded without asking"))
+    assert drive(app, ["enter"]) == ["Confirm"]
+    assert drive(tui.Models(), ["enter", "n"]) == []

@@ -52,6 +52,7 @@ class Models(App[bool]):
         Binding("s", "serve", "Serve"),
         Binding("question_mark", "help", "Help"),
         Binding("q", "quit_app", "Quit"),
+        Binding("d", "set_default", "Default", show=False),
         Binding("u", "unload", "Unload", show=False),
         Binding("a", "alias", "Alias", show=False),
         Binding("i", "info", "Info", show=False),
@@ -64,6 +65,7 @@ class Models(App[bool]):
     def __init__(self) -> None:
         super().__init__()
         self.names: list[str] = []
+        self.sizes: dict[str, str] = {}  # model name -> the size shown in its row
         self.busy = False
         self.cancel = threading.Event()  # set by Esc; a download in progress stops at its next update
         self.downloading = False  # only downloads can be cancelled; loads and asks run to the end
@@ -155,7 +157,9 @@ class Models(App[bool]):
         keep = self.names[table.cursor_row] if self.names and table.row_count else None
         table.clear()
         self.names = []
+        self.sizes = {}
         for name, downloaded, size, languages in rows:
+            self.sizes[name] = size
             status = " · ".join(s for s, on in (("default", name == default), ("loaded", name in loaded)) if on)
             table.add_row("✓" if downloaded else "", name, size, languages, status, key=name)
             self.names.append(name)
@@ -268,6 +272,11 @@ class Models(App[bool]):
         name = self.selected()
         if not name:
             return
+        if not self.downloaded(name):
+            size = self.sizes.get(name, "an unknown size")
+            question = dialogs.Confirm(f"Download {name}?", f"It is {size}. It becomes the default model.")
+            if not await self.push_screen_wait(question):
+                return
 
         async def use() -> None:
             if resolved := await self.fetch(name):
@@ -275,6 +284,17 @@ class Models(App[bool]):
                 self.notify(f"{canonical(resolved)} is now the default")
 
         await self.job(f"Preparing {name} …", use)
+
+    def action_set_default(self) -> None:
+        name = self.selected()
+        if not name:
+            return
+        if not self.downloaded(name):
+            self.notify("Download it first (p or Enter)", severity="warning")
+            return
+        config.update(default_model=canonical_or(name))
+        self.notify(f"{canonical_or(name)} is now the default")
+        self.reload()
 
     @work
     async def action_pull(self) -> None:
@@ -428,6 +448,7 @@ class Models(App[bool]):
 
 KEYS_HELP = """\
 enter   download if needed, make it the default   (pull + default)
+d       make a downloaded model the default
 p       download only                              (pull)
 r       ask the model questions                    (run)
 n       add any Hugging Face repo by name          (pull)
