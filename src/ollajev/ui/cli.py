@@ -215,6 +215,8 @@ def cmd_serve(args: argparse.Namespace) -> None:
 
         if not manage():
             exit_now()
+    # Importing the server stack takes a few seconds; say something before the terminal looks stuck.
+    print("==> Starting the server …", flush=True)
     import uvicorn
 
     from ..server import api

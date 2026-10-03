@@ -6,6 +6,7 @@ import asyncio
 import logging
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, ClassVar, NamedTuple
 
 from textual import work
@@ -39,6 +40,14 @@ ModalScreen { align: center middle; background: $background 60%; }
 .wide { width: 112; }
 #results { height: 20; }
 """
+
+
+class NoWaitExecutor(ThreadPoolExecutor):
+    """The event loop's default executor. On exit asyncio waits for every thread in it to finish, and a Hugging Face
+    lookup still running would keep the terminal blank after `s` or `q`. This one lets them finish on their own."""
+
+    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
+        super().shutdown(wait=False, cancel_futures=True)
 
 
 class Row(NamedTuple):
@@ -97,6 +106,7 @@ class Models(App[bool]):
         yield Footer()
 
     def on_mount(self) -> None:
+        asyncio.get_running_loop().set_default_executor(NoWaitExecutor())
         table = self.query_one(DataTable)
         table.add_column("Disk", width=4)
         table.add_column("Model", width=46)
