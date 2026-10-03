@@ -126,3 +126,12 @@ def test_escape_cancels_a_running_download(app, monkeypatch):
             assert not app.busy
 
     asyncio.run(go())
+
+
+@pytest.mark.parametrize("key", ["x", "u", "s", "b"])
+def test_actions_wait_while_a_model_loads(app, monkeypatch, key):
+    monkeypatch.setattr(tui.store, "remove", lambda resolved: pytest.fail("removed during a load"))
+    monkeypatch.setattr(tui.service, "status", lambda: pytest.fail("service touched during a load"))
+    app.loading = "some/model"
+    assert drive(app, [key]) == []
+    assert app.return_value is None

@@ -65,6 +65,9 @@ class Models(App[bool]):
         self.cancel = threading.Event()  # set by Esc; a download in progress stops at its next update
         self.downloading = False  # only downloads can be cancelled; loads and asks run to the end
         self.local: tuple[str, Any, Any] | None = None  # model, ask, release: loaded in this process
+        self.loading: str | None = None  # the model being loaded into this process, if any
+        # One load at a time: two Ask dialogs opened in a row must not hold two models in memory.
+        self.load_lock = threading.Lock()
         self.quants: dict[str, list[store.Variant]] = {}  # catalog GGUF repo -> all its quants on Hugging Face
 
     # ---- layout and data --------------------------------------------------------------------------
@@ -152,12 +155,27 @@ class Models(App[bool]):
 
     def connection(self, model: str) -> Any:
         """The ask function for `model`, loading it in this process unless a server is running."""
-        if self.local and self.local[0] != model:
-            self.release()
-        if self.local is None:
-            ask, release = repl.connect(model, lambda text: None)
-            self.local = (model, ask, release)
-        return self.local[1]
+        with self.load_lock:
+            if self.local and self.local[0] != model:
+                self.release()
+            if self.local is None:
+                self.loading = model
+                try:
+                    ask, release = repl.connect(model, lambda text: None)
+                finally:
+                    self.loading = None
+                self.local = (model, ask, release)
+            return self.local[1]
+
+    def refuse_while_busy(self) -> bool:
+        """True, with a message, when a job or a model load is running and the action must wait."""
+        if self.busy:
+            self.notify("Wait for the current job to finish (esc cancels a download)", severity="warning")
+            return True
+        if self.loading:
+            self.notify(f"Wait for {self.loading} to finish loading", severity="warning")
+            return True
+        return False
 
     def release(self) -> None:
         if self.local:
@@ -269,7 +287,7 @@ class Models(App[bool]):
     @work
     async def action_unload(self) -> None:
         name = self.selected()
-        if not name:
+        if not name or self.refuse_while_busy():
             return
         if client.server_running():
             reply = await asyncio.to_thread(client.call, "POST", "/api/stop", {"model": name})
@@ -284,7 +302,7 @@ class Models(App[bool]):
     @work
     async def action_remove(self) -> None:
         name = self.selected()
-        if not name:
+        if not name or self.refuse_while_busy():
             return
         if not self.downloaded(name):
             self.notify(f"{name} is not downloaded; nothing to delete")
@@ -348,6 +366,8 @@ class Models(App[bool]):
 
     @work
     async def action_service(self) -> None:
+        if self.refuse_while_busy():
+            return
         try:
             running, _ = await asyncio.to_thread(service.status)
             if running:
@@ -361,6 +381,8 @@ class Models(App[bool]):
             self.notify(str(exc), severity="error")
 
     def action_serve(self) -> None:
+        if self.refuse_while_busy():
+            return
         self.release()
         self.exit(True)
 
