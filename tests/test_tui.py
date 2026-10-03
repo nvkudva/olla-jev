@@ -178,3 +178,24 @@ def test_enter_asks_before_downloading(app, monkeypatch):
     monkeypatch.setattr(tui.store, "download", lambda *a: pytest.fail("downloaded without asking"))
     assert drive(app, ["enter"]) == ["Confirm"]
     assert drive(tui.Models(), ["enter", "n"]) == []
+
+
+def test_download_progress_shows_on_the_status_line(app, monkeypatch):
+    from types import SimpleNamespace
+
+    resolved = SimpleNamespace(repo_id="u/r", family=SimpleNamespace(runs_repo_code=False))
+    on_disk = {"bytes": 0}
+    monkeypatch.setattr(tui, "canonical", lambda resolved: resolved.repo_id)
+    monkeypatch.setattr(tui.store, "download_size", lambda resolved: 2_000_000_000)
+    monkeypatch.setattr(tui.store, "bytes_on_disk", lambda repo_id: on_disk["bytes"])
+
+    async def go():
+        async with app.run_test(size=(120, 36)) as pilot:
+            timer = await app.show_progress(resolved)
+            on_disk["bytes"] = 500_000_000
+            await pilot.pause(0.7)
+            timer.stop()
+            return str(app.query_one("#status").render())
+
+    status = asyncio.run(go())
+    assert "500.0 MB / 2.0 GB · 25%" in status and "esc cancels" in status

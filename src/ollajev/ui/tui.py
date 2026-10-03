@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+import time
 from typing import Any, ClassVar
 
 from textual import work
@@ -253,16 +254,40 @@ class Models(App[bool]):
                 self.notify("Not trusted; nothing downloaded", severity="warning")
                 return None
             store.trust(resolved)
-        self.say(f"Downloading {canonical(resolved)} …")
         self.downloading = True
+        progress = await self.show_progress(resolved)
         try:
             await asyncio.to_thread(store.download, resolved, self.cancel)
             if store.needs_prefetch(resolved):
                 self.say("Downloading the base model …")
                 await asyncio.to_thread(store.prefetch, resolved, self.cancel)
         finally:
+            progress.stop()
             self.downloading = False
         return resolved
+
+    async def show_progress(self, resolved: store.Resolved) -> Any:
+        """Put the download's bytes, percent and speed on the status line every half second; returns the timer."""
+        name = canonical(resolved)
+        try:
+            total = await asyncio.to_thread(store.download_size, resolved)
+        except Exception:  # progress is optional; the download itself reports real errors
+            total = 0
+        start = store.bytes_on_disk(resolved.repo_id)
+        started = time.monotonic()
+
+        def update() -> None:
+            done = store.bytes_on_disk(resolved.repo_id) - start
+            speed = done / max(time.monotonic() - started, 0.001)
+            if total:
+                percent = min(100, done * 100 // total)
+                amount = f"{dialogs.human(done)} / {dialogs.human(total)} · {percent}%"
+            else:
+                amount = dialogs.human(done)
+            self.say(f"Downloading {name}: {amount} · {dialogs.human(speed)}/s · esc cancels")
+
+        update()
+        return self.set_interval(0.5, update)
 
     # ---- actions ----------------------------------------------------------------------------------
 
