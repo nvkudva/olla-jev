@@ -753,8 +753,8 @@ class Models(App[bool]):
         short = await self.push_screen_wait(dialogs.Prompt(f"Short name for {name}", "julia"))
         if not short:
             return
-        if any(char.isspace() for char in short) or short in self.names:
-            self.notify(f"'{short}' cannot be a short name: no spaces, and not a model's own name", severity="error")
+        if message := self.short_name_error(short):
+            self.notify(message, severity="error")
             return
         current = config.aliases().get(short.lower())
         if current and current != name:
@@ -763,6 +763,15 @@ class Models(App[bool]):
                 return
         config.set_alias(short, name)
         self.notify(f"'{short.lower()}' now means {name}")
+
+    def short_name_error(self, short: str) -> str | None:
+        """Why `short` cannot be a short name, or None when it can. Aliases match ignoring case, so a name that
+        differs from a model's own name only by case is refused too."""
+        if any(char.isspace() for char in short):
+            return f"'{short}' cannot be a short name: no spaces in it"
+        if short.lower() in {name.lower() for name in self.names}:
+            return f"'{short}' is already a model's own name"
+        return None
 
     @work
     async def action_info(self) -> None:

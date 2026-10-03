@@ -438,3 +438,23 @@ def test_an_older_capitalised_alias_is_matched_and_replaced(tmp_path, monkeypatc
     assert config.alias("jev") == "u/a"
     config.set_alias("jev", "u/b")
     assert config.load()["aliases"] == {"jev": "u/b"}
+
+
+def test_a_short_name_may_not_clash_with_a_model_even_in_case(tmp_path, monkeypatch):
+    import asyncio
+
+    from ollajev.ui import tui
+
+    monkeypatch.setenv("OLLAJEV_HOME", str(tmp_path))
+    monkeypatch.setenv("OLLAJEV_MODELS", str(tmp_path / "m"))
+    app = tui.Models()
+    app.names = ["SupersonicLabs/Julia-1"]
+
+    async def go():
+        async with app.run_test(size=(120, 30)):
+            return {short: app.short_name_error(short) for short in ("julia", "supersoniclabs/Julia-1", "two words")}
+
+    errors = asyncio.run(go())
+    assert errors["julia"] is None  # not a model's own name, so it is free
+    assert errors["supersoniclabs/Julia-1"] == "'supersoniclabs/Julia-1' is already a model's own name"
+    assert errors["two words"] == "'two words' cannot be a short name: no spaces in it"
