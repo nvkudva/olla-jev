@@ -9,10 +9,11 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, ClassVar, NamedTuple
 
+from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import DataTable, Footer, Header, Static
+from textual.widgets import Button, DataTable, Footer, Header, Static
 
 from .. import client, config, service, store
 from ..catalog import CATALOG
@@ -26,8 +27,16 @@ CSS = """
 Screen { background: $surface; }
 Header { background: $surface; color: $text; }
 DataTable { height: 1fr; background: $surface; padding: 0 1; }
+#actions { height: 1; padding: 0 1; margin-top: 1; }
+.buttons { height: auto; margin-top: 1; }
+.buttons Button { width: auto; min-width: 0; padding: 0 1; margin-right: 1; background: $boost; }
+.buttons Button:hover { background: $primary 40%; }
+.buttons Button.-primary { background: $primary; }
+.buttons Button.-success { background: $success 70%; }
+.buttons Button.-error { background: $error 70%; }
+.buttons .hint { width: 1fr; margin-top: 0; }
 DataTable > .datatable--header { background: $surface; color: $text-muted; text-style: bold; }
-#status { height: 1; padding: 0 2; color: $text-muted; }
+#status { height: 1; padding: 0 2; margin-bottom: 1; color: $text-muted; }
 Footer { background: $surface; }
 
 ModalScreen { align: center middle; background: $background 60%; }
@@ -101,9 +110,25 @@ class Models(App[bool]):
 
     def compose(self) -> ComposeResult:
         yield Header(icon="")
-        yield DataTable(cursor_type="row")
+        yield DataTable(cursor_type="row", zebra_stripes=True)
+        yield dialogs.buttons(
+            ("Download", "pull", "primary"),
+            ("Ask", "ask", "default"),
+            ("Make default", "set_default", "default"),
+            ("Info", "info", "default"),
+            ("Unload", "unload", "default"),
+            ("Delete", "remove", "default"),
+            ("Add model…", "add", "default"),
+            ("Serve", "serve", "success"),
+            row_id="actions",
+        )
         yield Static("", id="status")
         yield Footer()
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        """A button acts on the selected row, like its key; then the list takes the keys again."""
+        await dialogs.Clickable.on_button_pressed(self, event)  # type: ignore[arg-type]
+        self.query_one(DataTable).focus()
 
     def on_mount(self) -> None:
         asyncio.get_running_loop().set_default_executor(NoWaitExecutor())
@@ -183,13 +208,13 @@ class Models(App[bool]):
         self.sizes = {}
         for row in rows:
             self.sizes[row.name] = row.size
-            markers = []
+            markers = Text()
             if row.name == default:
-                markers.append("★ default")
+                markers.append("★ default  ", style="bold yellow")
             if row.name in loaded:
-                markers.append("● loaded")
-            disk = "✓" if row.name in have else ""
-            table.add_row(disk, row.label, row.size, row.languages, "  ".join(markers), key=row.name)
+                markers.append("● loaded", style="bold green")
+            disk = Text("✓", style="green") if row.name in have else ""
+            table.add_row(disk, row.label, row.size, row.languages, markers, key=row.name)
             self.names.append(row.name)
         if keep in self.names:
             table.move_cursor(row=self.names.index(keep))
@@ -512,7 +537,7 @@ class Models(App[bool]):
             entry = next((e for e in CATALOG if e.name == name), None)
             await self.push_screen_wait(
                 dialogs.Info(
-                    name, f"{entry.description if entry else 'unknown model'}\n\nNot downloaded. Press Enter to get it."
+                    name, f"{entry.description if entry else 'unknown model'}\n\nNot downloaded. Press Enter or Download to get it."
                 )
             )
             return

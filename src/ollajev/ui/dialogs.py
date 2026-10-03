@@ -11,9 +11,9 @@ from typing import Any, ClassVar
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import DataTable, Input, Select, Static, TextArea
+from textual.widgets import Button, DataTable, Input, Select, Static, TextArea
 
 from .. import client, config, store
 from . import repl
@@ -21,7 +21,22 @@ from . import repl
 log = logging.getLogger(__name__)
 
 
-class Prompt(ModalScreen[str | None]):
+def buttons(*specs: tuple[str, str, str], row_id: str | None = None) -> Horizontal:
+    """A row of clickable buttons, each (label, action, variant). A click runs the action its key would."""
+    row = [Button(label, id=f"do-{action}", variant=variant, compact=True) for label, action, variant in specs]  # type: ignore[arg-type]
+    return Horizontal(*row, classes="buttons", id=row_id)
+
+
+class Clickable:
+    """Runs the action named by a `buttons` button, so the mouse does what the keys do."""
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id and event.button.id.startswith("do-"):
+            event.stop()
+            await self.run_action(event.button.id.removeprefix("do-"))  # type: ignore[attr-defined]
+
+
+class Prompt(Clickable, ModalScreen[str | None]):
     BINDINGS: ClassVar = [("escape", "cancel", "Cancel")]
 
     def __init__(self, title: str, placeholder: str = "") -> None:
@@ -32,10 +47,13 @@ class Prompt(ModalScreen[str | None]):
         with Vertical(classes="dialog"):
             yield Static(self.heading, classes="title")
             yield Input(placeholder=self.placeholder)
-            yield Static("enter confirm · esc cancel", classes="hint")
+            yield buttons(("OK", "submit", "primary"), ("Cancel", "cancel", "default"))
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        self.dismiss(event.value.strip() or None)
+        self.action_submit()
+
+    def action_submit(self) -> None:
+        self.dismiss(self.query_one(Input).value.strip() or None)
 
     def action_cancel(self) -> None:
         self.dismiss(None)
@@ -49,7 +67,7 @@ def human(size: float, units: tuple[str, ...] = ("B", "KB", "MB", "GB", "TB")) -
     return f"{size:.1f} {units[-1]}"
 
 
-class AddModel(ModalScreen[str | None]):
+class AddModel(Clickable, ModalScreen[str | None]):
     """Search Hugging Face and list every quant of every matching repo in one table. Returns the name `pull`
     takes."""
 
@@ -65,7 +83,9 @@ class AddModel(ModalScreen[str | None]):
             yield Input(placeholder="search words, user/repo or a huggingface.co link", id="query")
             yield DataTable(id="results", cursor_type="row")
             yield Static("", id="note")
-            yield Static("type to search · enter pick · esc cancel", classes="hint")
+            with Horizontal(classes="buttons"):
+                yield Static("type to search · click or enter picks a row", classes="hint")
+                yield Button("Cancel", id="do-cancel", compact=True)
 
     def on_mount(self) -> None:
         table = self.query_one("#results", DataTable)
@@ -146,7 +166,7 @@ def variants(repo_id: str) -> list[store.Variant]:
         return []
 
 
-class Confirm(ModalScreen[bool]):
+class Confirm(Clickable, ModalScreen[bool]):
     """Yes or no. Enter picks `default`: yes for harmless steps, no for anything that deletes or discards."""
 
     BINDINGS: ClassVar = [("y", "yes", "Yes"), ("n,escape", "no", "No"), ("enter", "default", "Default")]
@@ -159,8 +179,12 @@ class Confirm(ModalScreen[bool]):
         with Vertical(classes="dialog"):
             yield Static(self.heading, classes="title")
             yield Static(self.body)
-            hint = "y yes · n no · enter yes" if self.default else "y yes · n no · enter no"
-            yield Static(hint, classes="hint")
+            yes_variant = "primary" if self.default else "error"
+            yield buttons(("Yes", "yes", yes_variant), ("No", "no", "default"))
+
+    def on_mount(self) -> None:
+        # The safe answer has the focus, so Enter (or a stray click on nothing) picks it.
+        self.query_one("#do-yes" if self.default else "#do-no", Button).focus()
 
     def action_default(self) -> None:
         self.dismiss(self.default)
@@ -172,7 +196,7 @@ class Confirm(ModalScreen[bool]):
         self.dismiss(False)
 
 
-class Info(ModalScreen[None]):
+class Info(Clickable, ModalScreen[None]):
     BINDINGS: ClassVar = [("escape,enter,q", "close", "Close")]
 
     def __init__(self, title: str, body: str) -> None:
@@ -183,7 +207,7 @@ class Info(ModalScreen[None]):
         with Vertical(classes="dialog"):
             yield Static(self.heading, classes="title")
             yield Static(self.body)
-            yield Static("esc close", classes="hint")
+            yield buttons(("Close", "close", "primary"))
 
     def action_close(self) -> None:
         self.dismiss(None)
@@ -202,7 +226,7 @@ def valid_host(host: str) -> bool:
     return True
 
 
-class Options(ModalScreen[dict[str, Any] | None]):
+class Options(Clickable, ModalScreen[dict[str, Any] | None]):
     BINDINGS: ClassVar = [("escape", "cancel", "Cancel")]
 
     def compose(self) -> ComposeResult:
@@ -220,9 +244,12 @@ class Options(ModalScreen[dict[str, Any] | None]):
             yield Input(saved.get("host", "127.0.0.1"), id="host")
             yield Static("Port")
             yield Input(str(saved.get("port", config.DEFAULT_PORT)), id="port", type="integer")
-            yield Static("tab next · enter save · esc cancel", classes="hint")
+            yield buttons(("Save", "save", "primary"), ("Cancel", "cancel", "default"))
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
+        self.action_save()
+
+    def action_save(self) -> None:
         port = self.query_one("#port", Input).value.strip()
         if not port.isdigit() or not 0 < int(port) < 65536:
             self.notify("Port must be 1-65535", severity="error")
@@ -240,7 +267,7 @@ class Options(ModalScreen[dict[str, Any] | None]):
         self.dismiss(None)
 
 
-class Ask(ModalScreen[None]):
+class Ask(Clickable, ModalScreen[None]):
     """Ask a model questions. One question per line, in the same form `ollajev run` takes."""
 
     BINDINGS: ClassVar = [("escape", "close", "Close"), Binding("ctrl+s,ctrl+r", "send", "Ask", priority=True)]
@@ -263,7 +290,7 @@ class Ask(ModalScreen[None]):
             )
             with VerticalScroll(id="answers-box"):
                 yield Static("", id="answers")
-            yield Static("ctrl+s ask · esc close", classes="hint")
+            yield buttons(("Ask  ctrl+s", "send", "primary"), ("Close", "close", "default"))
 
     def on_mount(self) -> None:
         self.show(f"Loading {self.model} …")

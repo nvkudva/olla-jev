@@ -287,3 +287,34 @@ def test_ask_keeps_a_history_of_answers(monkeypatch):
 )
 def test_options_accepts_only_host_names_and_addresses(host, valid):
     assert tui.dialogs.valid_host(host) is valid
+
+
+def test_mouse_buttons_do_what_the_keys_do(app):
+    async def go():
+        async with app.run_test(size=(140, 36)) as pilot:
+            await pilot.click("#do-info")
+            await pilot.pause()
+            opened = type(app.screen).__name__
+            await pilot.click("#do-close")
+            await pilot.pause()
+            return opened, type(app.screen).__name__, type(app.focused).__name__
+
+    assert asyncio.run(go()) == ("Info", "Screen", "DataTable")
+
+
+def test_confirm_buttons_answer_it():
+    async def go(button):
+        answers = []
+
+        class Host(tui.App):
+            def on_mount(self):
+                self.push_screen(tui.dialogs.Confirm("t", "b"), answers.append)
+
+        async with Host().run_test() as pilot:
+            await pilot.pause()
+            await pilot.click(button)
+            await pilot.pause()
+        return answers
+
+    assert asyncio.run(go("#do-yes")) == [True]
+    assert asyncio.run(go("#do-no")) == [False]
