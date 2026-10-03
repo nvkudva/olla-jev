@@ -6,7 +6,7 @@ import asyncio
 import logging
 import threading
 import time
-from typing import Any, ClassVar
+from typing import Any, ClassVar, NamedTuple
 
 from textual import work
 from textual.app import App, ComposeResult
@@ -39,6 +39,13 @@ ModalScreen { align: center middle; background: $background 60%; }
 .wide { width: 112; }
 #results { height: 20; }
 """
+
+
+class Row(NamedTuple):
+    name: str  # what pull, rm and the config call it
+    label: str  # what the Model column shows
+    size: str
+    languages: str  # the catalog's languages, or the family of a model outside the catalog
 
 
 class Models(App[bool]):
@@ -91,10 +98,10 @@ class Models(App[bool]):
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
-        table.add_column("", width=2)
+        table.add_column("Disk", width=4)
         table.add_column("Model", width=46)
-        table.add_column("Size", width=8)
-        table.add_column("Languages", width=16)
+        table.add_column("Size", width=9)
+        table.add_column("Languages / family", width=18)
         table.add_column("Status")
         self.reload()
         self.say_idle()
@@ -156,41 +163,61 @@ class Models(App[bool]):
         self.call_from_thread(self.render_list, *data)
 
     def render_list(self, have: dict[str, Any], default: str, server_up: bool, loaded: set[str]) -> None:
-        rows = []
-        for i, e in enumerate(CATALOG):
-            rows.append((e.name, e.name in have, f"{e.size_gb:.1f} GB", e.languages))
-            repo = e.name.partition(":")[0]
-            if repo in self.quants and all(n.name.partition(":")[0] != repo for n in CATALOG[i + 1 :]):
-                curated = {n.name for n in CATALOG}
-                rows += [
-                    (v.name, v.name in have, dialogs.human(v.size), e.languages)
-                    for v in self.quants[repo]
-                    if v.name not in curated
-                ]
-        listed = {row[0] for row in rows}
-        rows += [
-            (name, True, f"{m['size'] / 1e9:.1f} GB", m["details"]["family"])
-            for name, m in have.items()
-            if name not in listed
-        ]
+        rows = self.list_rows(have)
         if self.filter_text:
-            rows = [row for row in rows if self.filter_text.lower() in row[0].lower()]
+            rows = [row for row in rows if self.filter_text.lower() in row.name.lower()]
         table = self.query_one(DataTable)
         keep = self.names[table.cursor_row] if self.names and table.row_count else None
         table.clear()
         self.names = []
         self.sizes = {}
-        for name, downloaded, size, languages in rows:
-            self.sizes[name] = size
-            status = " · ".join(s for s, on in (("default", name == default), ("loaded", name in loaded)) if on)
-            table.add_row("✓" if downloaded else "", name, size, languages, status, key=name)
-            self.names.append(name)
+        for row in rows:
+            self.sizes[row.name] = row.size
+            markers = []
+            if row.name == default:
+                markers.append("★ default")
+            if row.name in loaded:
+                markers.append("● loaded")
+            disk = "✓" if row.name in have else ""
+            table.add_row(disk, row.label, row.size, row.languages, "  ".join(markers), key=row.name)
+            self.names.append(row.name)
         if keep in self.names:
             table.move_cursor(row=self.names.index(keep))
         self.sub_title = f"server running at {client.server_url()}" if server_up else "server not running"
         self.summary = self.describe(default, loaded, have, server_up)
         if not self.busy:
             self.say_idle()
+
+    def list_rows(self, have: dict[str, Any]) -> list[Row]:
+        """The catalog, each GGUF repo's other quants indented under its last curated entry, then any other
+        download. Sizes on disk are exact; a size not yet downloaded is an estimate, marked ~."""
+        curated = {entry.name for entry in CATALOG}
+        rows = []
+        for index, entry in enumerate(CATALOG):
+            rows.append(
+                Row(entry.name, entry.name, self.size_of(entry.name, have, entry.size_gb * 1e9), entry.languages)
+            )
+            repo = entry.name.partition(":")[0]
+            later_entries = CATALOG[index + 1 :]
+            last_of_repo = all(other.name.partition(":")[0] != repo for other in later_entries)
+            if not last_of_repo:
+                continue
+            for variant in self.quants.get(repo, []):
+                if variant.name in curated:
+                    continue
+                label = f"  └ {variant.name.partition(':')[2] or variant.name}"
+                rows.append(Row(variant.name, label, self.size_of(variant.name, have, variant.size), entry.languages))
+        listed = {row.name for row in rows}
+        for name, model in have.items():
+            if name not in listed:
+                rows.append(Row(name, name, dialogs.human(model["size"]), model["details"]["family"]))
+        return rows
+
+    @staticmethod
+    def size_of(name: str, have: dict[str, Any], estimate: float) -> str:
+        if name in have:
+            return dialogs.human(have[name]["size"])
+        return "~" + dialogs.human(estimate)
 
     def describe(self, default: str, loaded: set[str], have: dict[str, Any], server_up: bool) -> str:
         on_disk = sum(model["size"] for model in have.values())
