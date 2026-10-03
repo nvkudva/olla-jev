@@ -279,3 +279,11 @@ def test_ask_keeps_a_history_of_answers(monkeypatch):
     shown = asyncio.run(go())
     assert shown.index("answer 2") < shown.index("answer 1")
     assert "u/model ·" in shown
+
+
+@pytest.mark.parametrize(
+    ("host", "valid"),
+    [("127.0.0.1", True), ("localhost", True), ("::1", True), ("[::1]", True), ("my host", False), ("h:80", False)],
+)
+def test_options_accepts_only_host_names_and_addresses(host, valid):
+    assert tui.dialogs.valid_host(host) is valid

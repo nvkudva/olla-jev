@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import time
 from typing import Any, ClassVar
@@ -172,6 +173,19 @@ class Info(ModalScreen[None]):
         self.dismiss(None)
 
 
+def valid_host(host: str) -> bool:
+    """A host name or an IP address, with no port: a colon is only allowed inside an IPv6 address."""
+    if not host or any(char.isspace() for char in host):
+        return False
+    if ":" not in host:
+        return True
+    try:
+        ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        return False
+    return True
+
+
 class Options(ModalScreen[dict[str, Any] | None]):
     BINDINGS: ClassVar = [("escape", "cancel", "Cancel")]
 
@@ -179,7 +193,7 @@ class Options(ModalScreen[dict[str, Any] | None]):
         saved = config.load()
         with Vertical(classes="dialog"):
             yield Static("Server options", classes="title")
-            yield Static("Device")
+            yield Static("Device (auto picks cuda, then mps, then cpu)")
             yield Select(
                 [(d, d) for d in ("auto", "mps", "cuda", "cpu")],
                 value=saved.get("device", "auto"),
@@ -197,13 +211,14 @@ class Options(ModalScreen[dict[str, Any] | None]):
         if not port.isdigit() or not 0 < int(port) < 65536:
             self.notify("Port must be 1-65535", severity="error")
             return
-        self.dismiss(
-            {
-                "device": self.query_one("#device", Select).value,
-                "host": self.query_one("#host", Input).value.strip() or "127.0.0.1",
-                "port": int(port),
-            }
-        )
+        host = self.query_one("#host", Input).value.strip() or "127.0.0.1"
+        if not valid_host(host):
+            self.notify("Address must be a host name or IP address, without a port", severity="error")
+            return
+        if not config.is_loopback(host) and not config.api_key():
+            self.notify(f"Serving on {host} needs OLLAJEV_API_KEY set first", severity="error")
+            return
+        self.dismiss({"device": self.query_one("#device", Select).value, "host": host, "port": int(port)})
 
     def action_cancel(self) -> None:
         self.dismiss(None)

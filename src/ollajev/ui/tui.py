@@ -539,6 +539,9 @@ class Models(App[bool]):
     def action_serve(self) -> None:
         if self.refuse_while_busy():
             return
+        if client.server_running():
+            self.notify(f"A server is already running at {client.server_url()}", severity="warning")
+            return
         self.release()
         self.exit(True)
 
