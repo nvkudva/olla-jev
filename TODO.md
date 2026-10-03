@@ -60,3 +60,9 @@
 - [x] Add clef, von, rlcd, onejev and jevk5 families
 - [x] Run laya ONNX weights; weight files replace .gguf across the store
 - [ ] Compare llama.cpp `llama serve` /v1/systemone (ggml-org Kev-4B-GGUF) with our kev adapter; if output matches, add an optional llama.cpp backend for Julia-1, Laya, Kev-4B, lev, OpenJev
+- [ ] Call `/v1/systemone` on each repo the catalog gained (jaredpalmer/kev-4b, kev-9b; internlm/Intern-Decision-2B, 4B; wfzyx/von; heman10x/rlcd-modernbert-151m; alibiserikbay/JevK5, JevK5-2B; OmniJev/OneJev-0.8B, 4B; Cloudflare/clef, clef-flash) and record the limits and a real size_gb for each
+- [ ] Check the size each newly catalogued row reports once downloaded: base-model accounting is family-level, so kev-4b and kev-9b should already include their Qwen base, but no kev row but 0.5b and 0.6b has been read back
+- [x] Adapter families that need a repo beside their own (kev's Qwen base) count it in the size the manager, `/api/tags` and `ollajev list` report
+- [x] Manager top bar: menu shortcuts read `Label (key)`, the server pill is gone; the Server panel's button reads Web Demo; the row Info icon is ⓘ
+- [x] Downloads column after Size in the manager list, read once per session from `store.downloads`
+- [x] Twelve repos added to the catalog: kev-4b, kev-9b, Intern-Decision-2B, Intern-Decision-4B, wfzyx/von, heman10x/rlcd-modernbert-151m, alibiserikbay/JevK5, JevK5-2B, OmniJev/OneJev-0.8B, OneJev-4B, Cloudflare/clef-flash, Cloudflare/clef
