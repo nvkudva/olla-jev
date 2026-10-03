@@ -52,6 +52,7 @@ function applyTheme() {
   if (theme === "system") document.documentElement.removeAttribute("data-theme");
   else document.documentElement.setAttribute("data-theme", theme);
   $("#theme").textContent = theme;
+  $("#theme").setAttribute("aria-label", `Colour theme: ${theme}. Click to change.`);
 }
 $("#theme").onclick = () => {
   theme = theme === "dark" ? "light" : theme === "light" ? "system" : "dark";
@@ -119,6 +120,8 @@ function blankFor(type) {
   };
 }
 
+const REMOVE_LABEL = { "del-question": "Remove this question", "del-option": "Remove this option", "del-rung": "Remove this rung" };
+
 /** One question card. Every input carries a `data-field` path into `questions`, which is how the
     delegated handler below writes back without a closure per node. */
 function questionMarkup(q, i) {
@@ -126,39 +129,39 @@ function questionMarkup(q, i) {
   const field = (path) => html`data-field="${i}.${path}" data-key="${i}.${path}"`;
   const remove = (act, j) => html`
     <button class="ghost x" type="button" data-act="${act}" data-i="${i}" data-j="${j}"
-            data-key="${act}-${i}-${j}">✕</button>`;
+            data-key="${act}-${i}-${j}" aria-label="${REMOVE_LABEL[act]}">✕</button>`;
 
   const parts = [html`
     <div class="row">
-      <input name="name" placeholder="question_name" value="${q.name}" ${field("name")}>
+      <input name="name" placeholder="question_name" aria-label="Question ${i + 1} name" value="${q.name}" ${field("name")}>
       <span class="meta">${q.type}</span>
       ${remove("del-question", 0)}
     </div>
-    <textarea placeholder="instructions" ${field("instructions")}>${q.instructions}</textarea>`];
+    <textarea placeholder="instructions" aria-label="Question ${i + 1} instructions" ${field("instructions")}>${q.instructions}</textarea>`];
 
   if (q.type === "choice") {
-    parts.push(html`<label>criteria — label : description</label>`);
+    parts.push(html`<span class="q-label">criteria — label : description</span>`);
     q.criteria.forEach((pair, j) => parts.push(html`
       <div class="crit">
-        <input class="label" placeholder="label" value="${pair[0]}" ${field(`criteria.${j}.0`)}>
-        <input placeholder="description (optional)" value="${pair[1] ?? ""}" ${field(`criteria.${j}.1`)}>
+        <input class="label" placeholder="label" aria-label="Option ${j + 1} label" value="${pair[0]}" ${field(`criteria.${j}.0`)}>
+        <input placeholder="description (optional)" aria-label="Option ${j + 1} description" value="${pair[1] ?? ""}" ${field(`criteria.${j}.1`)}>
         ${remove("del-option", j)}
       </div>`));
     parts.push(html`<button class="ghost" type="button" data-act="add-option" data-i="${i}" data-key="add-option-${i}">+ option</button>`);
   } else if (q.type === "score") {
-    parts.push(html`<label>criteria — lowest rung first</label>`);
+    parts.push(html`<span class="q-label">criteria — lowest rung first</span>`);
     q.criteria.forEach((rung, j) => parts.push(html`
       <div class="crit">
-        <input placeholder="rung ${j}" value="${rung}" ${field(`criteria.${j}`)}>
+        <input placeholder="rung ${j}" aria-label="Rung ${j}" value="${rung}" ${field(`criteria.${j}`)}>
         ${remove("del-rung", j)}
       </div>`));
     parts.push(html`<button class="ghost" type="button" data-act="add-rung" data-i="${i}" data-key="add-rung-${i}">+ rung</button>`);
   } else {
-    parts.push(html`<label>criteria (optional)</label>`);
+    parts.push(html`<span class="q-label">criteria (optional)</span>`);
     ["true", "false"].forEach((label, j) => parts.push(html`
       <div class="crit">
-        <input class="label" value="${label}" disabled>
-        <input placeholder="what makes it ${label}" value="${q.criteria[j] ?? ""}" ${field(`criteria.${j}`)}>
+        <input class="label" value="${label}" aria-label="Answer ${label}" disabled>
+        <input placeholder="what makes it ${label}" aria-label="What makes it ${label}" value="${q.criteria[j] ?? ""}" ${field(`criteria.${j}`)}>
       </div>`));
   }
 
@@ -260,6 +263,7 @@ function applyJsonView() {
 
 /** Send what the sidebar holds — the JSON pane first, if that is what is on screen. */
 function sendRequest() {
+  if (busy) return;
   if (qView === "json" && !applyJsonView()) return;
   let request;
   try {
@@ -273,8 +277,9 @@ function sendRequest() {
 }
 
 /** The state is the one thing a request cannot go without, so Send stands down while it is blank. */
+let busy = false;
 function syncSend() {
-  $("#send").disabled = !stateBox.value.trim();
+  $("#send").disabled = busy || !stateBox.value.trim();
 }
 
 function setView(mode) {
@@ -295,6 +300,7 @@ function paintEditor() {
   if (asJson) jsonPane.write(JSON.stringify(requestBody({ strict: false }), null, 2));
   for (const b of document.querySelectorAll("#q-view button")) {
     b.classList.toggle("is-on", b.dataset.view === qView);
+    b.setAttribute("aria-pressed", String(b.dataset.view === qView));
   }
 }
 
@@ -370,7 +376,8 @@ function answersMarkup(sent, data) {
 }
 
 function errorMarkup(detail) {
-  const list = Array.isArray(detail) ? detail : [{ loc: [], msg: String(detail) }];
+  const msg = typeof detail === "string" ? detail : JSON.stringify(detail);
+  const list = Array.isArray(detail) ? detail : [{ loc: [], msg }];
   return html`
     <div class="answers">
       <div class="notice">
@@ -402,6 +409,7 @@ function syncOpen() {
     el.classList.toggle("is-open", open);
     const caret = el.querySelector(".turn-caret");
     if (caret) caret.textContent = open ? "▾" : "▸";
+    el.querySelector(".turn-toggle")?.setAttribute("aria-expanded", String(open));
   });
 }
 
@@ -415,6 +423,7 @@ function applyView(turnEl, view) {
   if (answers) answers.hidden = json;
   for (const b of turnEl.querySelectorAll(".turn-view button[data-view]")) {
     b.classList.toggle("is-on", b.dataset.view === view);
+    b.setAttribute("aria-pressed", String(b.dataset.view === view));
   }
 }
 
@@ -423,15 +432,14 @@ function turnHeadMarkup(turn, index) {
   const time = turn.at ? new Date(turn.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : null;
   return html`
     <header class="turn-head" data-act="toggle-turn" data-i="${index}">
-      <span class="turn-caret">▸</span>
-      <span>Request #${index + 1}</span>
+      <button type="button" class="turn-toggle" aria-expanded="false"><span class="turn-caret" aria-hidden="true">▸</span> Request #${index + 1}</button>
       ${time ? html`<span>· ${time}</span>` : ""}
       <span class="turn-meta">
         ${tokens >= 450 ? html`<span class="turn-warn" title="Content past the 512-token context limit is silently truncated">⚠ near 512-tok limit</span>` : ""}
-        <span>${turn.data ? `${tokens} tok` : turn.pending ? "sending…" : "error"}</span>
-        <div class="seg turn-view">
-          <button type="button" class="ghost" data-act="turn-view" data-i="${index}" data-view="ui">UI</button>
-          <button type="button" class="ghost" data-act="turn-view" data-i="${index}" data-view="json">JSON</button>
+        <span>${turn.data ? (tokens != null ? `${tokens} tok` : "done") : turn.pending ? "sending…" : "failed"}</span>
+        <div class="seg turn-view" role="group" aria-label="View for request ${index + 1}">
+          <button type="button" class="ghost" data-act="turn-view" data-i="${index}" data-view="ui" aria-pressed="true">UI</button>
+          <button type="button" class="ghost" data-act="turn-view" data-i="${index}" data-view="json" aria-pressed="false">JSON</button>
         </div>
       </span>
     </header>`;
@@ -459,7 +467,8 @@ function turnMarkup(turn, index) {
 function showReadout(turn) {
   if (!turn.data) return;
   $("#r-model").textContent = turn.data.model;
-  $("#r-tokens").textContent = `${turn.data.usage?.input_tokens} tok`;
+  const tokens = turn.data.usage?.input_tokens;
+  $("#r-tokens").textContent = tokens != null ? `${tokens} tok` : "—";
 }
 
 const scrollLog = () => { log.parentElement.scrollTop = log.parentElement.scrollHeight; };
@@ -479,6 +488,8 @@ function renderLog() {
 }
 
 async function ask(request) {
+  busy = true;
+  syncSend();
   log.querySelector(".empty")?.remove();
   const at = Date.now();
   const loaded = await fetch("/api/ps").then((r) => r.json()).then((b) => b.models.some((m) => m.name === request.model)).catch(() => true);
@@ -498,9 +509,12 @@ async function ask(request) {
       body: JSON.stringify(request),
     });
     const body = await res.json();
-    turn = res.ok ? { request, data: body, at } : { request, error: body.detail, at };
+    turn = res.ok ? { request, data: body, at } : { request, error: body.detail ?? `HTTP ${res.status}`, at };
   } catch (e) {
-    turn = { request, error: String(e), at };
+    turn = { request, error: `Could not reach the server or read its reply (${e.message ?? e}).`, at };
+  } finally {
+    busy = false;
+    syncSend();
   }
   pending.remove();
   history.push(turn);
@@ -538,7 +552,7 @@ document.addEventListener("click", (e) => {
 
 document.addEventListener("input", (e) => {
   const el = e.target.closest("[data-field]");
-  if (el) setField(el.dataset.field, el.value);
+  if (el) { setField(el.dataset.field, el.value); requestError.hidden = true; }
 });
 
 // ---- wiring --------------------------------------------------------------
@@ -555,7 +569,7 @@ $("#add-score").onclick = () => addQuestion("score");
 $("#clear-log").onclick = () => { history = []; store.set("ollajev.history", history); renderLog(); };
 
 $("#send").onclick = sendRequest;
-stateBox.addEventListener("input", () => { store.set("ollajev.state", stateBox.value); syncSend(); });
+stateBox.addEventListener("input", () => { store.set("ollajev.state", stateBox.value); requestError.hidden = true; syncSend(); });
 stateBox.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) sendRequest();
 });
@@ -588,9 +602,12 @@ fetch("/v1/models").then((r) => r.json()).then((body) => {
   models = body.models ?? [];
   for (const m of models) modelSel.append(node(html`<option value="${m.name}">${m.name}${m.default ? " (default)" : ""}</option>`));
   const saved = store.get("ollajev.model", "");
+  if (!models.length) modelSel.append(node(html`<option value="">No models installed</option>`));
   if (models.some((m) => m.name === saved)) modelSel.value = saved;
   showModel();
-}).catch(() => {});
+}).catch(() => {
+  modelSel.append(node(html`<option value="">Could not load models</option>`));
+});
 modelSel.onchange = () => { store.set("ollajev.model", modelSel.value); showModel(); };
 
 fetch("/ui/presets").then((r) => r.json()).then((presets) => {

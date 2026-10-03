@@ -163,7 +163,7 @@ select { width: auto; }
   & select { font-family: var(--mono); font-size: 12px; padding: 1px 6px; max-width: 26ch; }
 }
 
-.theme-toggle { margin-left: 12px; font: 400 11px var(--mono); padding: 2px 7px; background: transparent; color: var(--muted); border: 1px solid var(--rule); border-radius: 2px; }
+.theme-toggle { font: 400 11px var(--mono); padding: 2px 7px; background: transparent; color: var(--muted); border: 1px solid var(--rule); border-radius: 2px; }
 /* Later than `button:hover:not(:disabled)` and the same specificity, so it has to stay here. */
 button.theme-toggle:hover { color: var(--ink); border-color: var(--rule-strong); background: transparent; }
 
@@ -237,7 +237,8 @@ main {
     & .meta { font-family: var(--mono); font-size: 11px; color: var(--muted); }
     & .push { margin-left: auto; }
   }
-  & label { font-size: 11px; font-weight: 600; color: var(--muted); }
+  & label,
+  & .q-label { font-size: 11px; font-weight: 600; color: var(--muted); }
   & textarea { min-height: 40px; }
 }
 
@@ -288,6 +289,11 @@ main {
     &:hover { color: var(--ink); }
     & > span { white-space: nowrap; }
     & .turn-caret { flex: none; }
+    & .turn-toggle {
+      font: inherit; color: inherit; background: transparent; border: 0; padding: 0; white-space: nowrap;
+
+      &:hover:not(:disabled) { background: transparent; color: var(--ink); }
+    }
     & .turn-meta { margin-left: auto; display: flex; align-items: center; gap: 8px; }
     & .turn-warn { color: var(--warn); white-space: normal; }
     & button.ghost { font-size: 10.5px; padding: 1px 6px; }
@@ -405,7 +411,20 @@ footer a { color: var(--signal); }
   main { grid-template-columns: minmax(0, 1fr); }
   .shell { height: auto; min-height: 100%; }
   .panel { height: auto; min-height: 58vh; }
-  .readout { flex-wrap: wrap; }
+  .readout { flex-wrap: wrap; gap: 10px 22px; }
+}
+
+/* Phone widths: the panel head, turn head and answer foot wrap instead of clipping. */
+@media (max-width: 560px) {
+  main { padding: 12px; gap: 12px; }
+  .bar-title { flex-wrap: wrap; gap: 6px 14px; }
+  .wordmark { font-size: 16px; }
+  .panel-head { flex-wrap: wrap; }
+  .head-tools { flex-wrap: wrap; gap: 8px; }
+  .turn .turn-head { flex-wrap: wrap; }
+  .turn .turn-head .turn-meta { flex-wrap: wrap; }
+  .dist .dist-foot { flex-wrap: wrap; }
+  .dist .dist-foot .dist-meta { margin-left: 0; }
 }
 
 @keyframes progress-slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }

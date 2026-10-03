@@ -31,15 +31,15 @@
         </g>
         <text x="70" y="42" font-family="DejaVu Sans, Helvetica Neue, Helvetica, Arial, sans-serif"
               font-size="34" font-weight="600" letter-spacing="0.5" fill="currentColor">ollajev</text>
-      </svg><span class="wordmark">System One decision models from Hugging Face, running on your machine</span>
+      </svg><h1 class="wordmark">System One decision models from Hugging Face, running on your machine</h1>
       </div>
       <div class="bar-copy">
 
       <p class="tagline">
         It is not a chat model. It is a System One model like
-        <a href="https://typesafe.ai" target="_blank" rel="noreferrer">Jev</a>. 
-        <br>Send a state — any text or JSON & a set of questions, returns answers with calibrated probabilities in a single forward pass.
-        <br>Question types: <b>noul</b> answers true or false, <b>choice</b> picks one named option,<b>score</b> returns the expectation over ordered levels.
+        <a href="https://typesafe.ai" target="_blank" rel="noreferrer">Jev</a>.
+        <br>Send a state (any text or JSON) and a set of questions; it returns answers with calibrated probabilities in a single forward pass.
+        <br>Question types: <b>noul</b> answers true or false, <b>choice</b> picks one named option, <b>score</b> returns the expectation over ordered levels.
       </p>
       </div>
     </div>
@@ -50,7 +50,7 @@
         <div><dt>Limits</dt><dd id="r-limits">—</dd></div>
         <div><dt>API server</dt><dd>/v1/systemone</dd></div>
         <div><dt>Last run</dt><dd id="r-tokens">—</dd></div>
-        <button class="theme-toggle" id="theme" title="Switch between dark, light and your system setting">system</button>
+        <div><dt>Theme</dt><dd><button type="button" class="theme-toggle" id="theme" title="Switch between dark, light and your system setting">system</button></dd></div>
       </dl>
     </div>
   </div>
@@ -66,10 +66,10 @@
             <option value="">Load an example</option>
           </select>
           <div class="seg" id="q-view" role="group" aria-label="Request view">
-            <button type="button" class="ghost is-on" data-view="ui">UI</button>
-            <button type="button" class="ghost" data-view="json">JSON</button>
+            <button type="button" class="ghost is-on" data-view="ui" aria-pressed="true">UI</button>
+            <button type="button" class="ghost" data-view="json" aria-pressed="false">JSON</button>
           </div>
-          <button type="button" id="send">Send</button>
+          <button type="button" id="send" title="Send the request (⌘/Ctrl+Enter)">Send</button>
         </div>
       </div>
       <div class="panel-body">
@@ -83,13 +83,13 @@
           <div id="questions"></div>
         </div>
         <div id="q-json" class="cm-host" aria-label="Request as JSON" hidden></div>
-        <p class="notice" id="request-error" hidden></p>
+        <p class="notice" id="request-error" role="alert" hidden></p>
       </div>
       <div class="actions">
         <h3>Add a new question</h3>
-        <button class="ghost" id="add-noul">+ noul</button>
-        <button class="ghost" id="add-choice">+ choice</button>
-        <button class="ghost" id="add-score">+ score</button>
+        <button type="button" class="ghost" id="add-noul" aria-label="Add a noul (true or false) question">+ noul</button>
+        <button type="button" class="ghost" id="add-choice" aria-label="Add a choice question">+ choice</button>
+        <button type="button" class="ghost" id="add-score" aria-label="Add a score question">+ score</button>
       </div>
     </section>
 
@@ -98,9 +98,9 @@
   <section class="panel">
     <div class="panel-head">
       <h2>Conversation</h2>
-      <button class="ghost" id="clear-log">Clear</button>
+      <button type="button" class="ghost" id="clear-log" aria-label="Clear the conversation">Clear</button>
     </div>
-    <div class="panel-body"><div id="log"></div></div>
+    <div class="panel-body"><div id="log" aria-live="polite" aria-relevant="additions"></div></div>
   </section>
 </main>
 
