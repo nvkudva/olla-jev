@@ -196,7 +196,7 @@ Run `ollajev <command> --help` for options and an example.
 
 ### Model manager
 
-`ollajev setup` opens one screen for the model commands. Move with the arrow keys or the mouse. Every row has buttons: Download for a model not on disk yet, then Serve and Delete, and Info. The menu bar at the top (Add, Default, Filter, Settings, Help, Quit) can be clicked or used with its keys. Serve starts the server right there: a Server panel shows its address and model, with Demo, Restart and Stop; quitting the manager stops it. The key bar under the list and the buttons in every dialog can be clicked too. The keys:
+`ollajev setup` opens one screen for the model commands. Move with the arrow keys or the mouse. Every row has buttons: Download for a model not on disk yet, then Serve and Delete, and Info. The menu bar at the top (Add, Default, Filter, Settings, Help, Quit) can be clicked or used with its keys. Serve starts the server right there: a Server panel shows its address and model, with Web Demo, Restart and Stop; quitting the manager stops it. The key bar under the list and the buttons in every dialog can be clicked too. The keys:
 
 | Key | Same as | What it does |
 |---|---|---|

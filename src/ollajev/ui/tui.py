@@ -201,7 +201,7 @@ class Models(App[bool]):
         Binding("a", "alias", "Alias", show=False),
         Binding("o", "options", "Options", show=False),
         Binding("b", "service", "Service", show=False),
-        Binding("w", "open_demo", "Demo", show=False),
+        Binding("w", "open_demo", "Web Demo", show=False),
         Binding("ctrl+r", "reload_list", "Refresh", show=False),
         Binding("e", "last_error", "Error", show=False),
         Binding("escape", "cancel_job", "Cancel", show=False),
@@ -245,7 +245,7 @@ class Models(App[bool]):
             with Horizontal(id="server-row"):
                 yield Static("", id="server-info")
                 yield dialogs.buttons(
-                    ("⧉ Demo", "open_demo", "primary"),
+                    ("⧉ Web Demo", "open_demo", "primary"),
                     ("↻ Restart", "restart_server", "default"),
                     ("■ Stop", "stop_server", "error"),
                 )
