@@ -17,8 +17,8 @@ from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal
-from textual.widgets import DataTable, Footer, Static
+from textual.containers import Horizontal, Vertical
+from textual.widgets import Button, DataTable, Static
 
 from .. import client, config, service, store
 from ..catalog import CATALOG
@@ -38,15 +38,21 @@ Screen { background: $background; }
 #brand { height: 1; padding: 0 1; background: $panel; }
 #brand-name { width: 1fr; text-style: bold; color: $accent; }
 #server-pill { width: auto; }
-DataTable { height: 1fr; background: $surface; padding: 0 1; }
+#models-panel {
+    height: 1fr; margin: 0 1; background: $surface; border: round $primary 60%;
+    border-title-color: $text; border-title-style: bold; border-subtitle-color: $text-muted;
+}
+DataTable { height: 1fr; background: $surface; }
 DataTable > .datatable--header { background: $surface; color: $text-muted; text-style: bold; }
 DataTable > .datatable--cursor { background: $primary 30%; text-style: bold; }
 DataTable > .datatable--hover { background: $boost; }
 #empty { height: 1fr; content-align: center middle; color: $text-muted; background: $surface; display: none; }
-#status { height: 1; padding: 0 1; color: $text-muted; text-align: right; }
+#status { height: 1; padding: 0 2; color: $text-muted; }
 #status.error { color: $error; text-align: left; }
 #status.busy { color: $text; text-align: left; }
-Footer { background: $panel; }
+#keys { height: 1; padding: 0 1; margin-top: 1; background: $panel; }
+#keys Button { width: auto; min-width: 0; padding: 0 1; margin-right: 1; background: $boost; }
+#keys Button:hover { background: $primary 40%; }
 
 ModalScreen { align: center middle; background: $background 60%; }
 .dialog {
@@ -104,6 +110,18 @@ class Row(NamedTuple):
     languages: str  # the catalog's languages, or the family of a model outside the catalog
 
 
+# The bar under the list: (key, label, action). Every key works from the keyboard too; ? lists them all.
+KEY_BAR = [
+    ("r", "Ask", "ask"),
+    ("d", "Default", "set_default"),
+    ("i", "Info", "info"),
+    ("n", "Add model", "add"),
+    ("/", "Filter", "filter"),
+    ("?", "Help", "help"),
+    ("q", "Quit", "quit_app"),
+]
+
+
 class Models(App[bool]):
     TITLE = "ollajev"
     CSS = CSS
@@ -132,8 +150,6 @@ class Models(App[bool]):
         super().__init__()
         self.names: list[str] = []
         self.sizes: dict[str, str] = {}  # model name -> the size shown in its row
-        self.states: dict[str, tuple[bool, bool]] = {}  # model name -> (on disk, loaded), for its action links
-        self.highlighted: str | None = None  # the row that shows its action links
         self.summary = ""  # the idle status line: disk use and filter
         self.filter_text = ""  # `/` shows only the models whose name contains it
         self.fetching_quants = False
@@ -154,10 +170,19 @@ class Models(App[bool]):
         with Horizontal(id="brand"):
             yield Static("🦒 ollajev", id="brand-name")
             yield Static("", id="server-pill")
-        yield DataTable(cursor_type="row")
-        yield Static("", id="empty")
+        with Vertical(id="models-panel") as panel:
+            panel.border_title = "Models"
+            yield DataTable(cursor_type="row")
+            yield Static("", id="empty")
         yield Static("", id="status")
-        yield Footer()
+        with Horizontal(id="keys"):
+            for key, label, action in KEY_BAR:
+                yield Button(f"[b $accent]{key}[/] {label}", id=f"do-{action}", compact=True)
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        """A key button runs its action like the key; then the list takes the keys again."""
+        await dialogs.Clickable.on_button_pressed(self, event)  # type: ignore[arg-type]
+        self.query_one(DataTable).focus()
 
     def on_mount(self) -> None:
         asyncio.get_running_loop().set_default_executor(NoWaitExecutor())
@@ -180,9 +205,12 @@ class Models(App[bool]):
             self.render_list(*self.snapshot_cache)
 
     def colour(self, role: str) -> str:
-        """A colour of the current theme (success, warning, error, accent, primary) as a Rich colour."""
-        value = getattr(self.current_theme, role, None)
-        return str(value) if value else "default"
+        """A colour of the current theme (success, warning, error, accent, panel…) as a Rich colour. A light theme
+        gets a darker shade of text colours and button backgrounds, which would wash out on it otherwise."""
+        if not self.current_theme.dark and role in ("success", "warning", "error", "accent", "panel"):
+            role = f"{role}-darken-2" if role != "panel" else "panel-darken-1"
+        value = self.get_css_variables().get(role, "")
+        return value if value.startswith("#") else "default"
 
     @work(group="quants")
     async def load_quants(self) -> None:
@@ -206,10 +234,12 @@ class Models(App[bool]):
             first_line = self.last_error.splitlines()[0]
             self.say(f"! {first_line}  ·  e for details", "error")
             return
-        summary = self.summary
+        parts = []
         if self.fetching_quants:
-            summary = f"fetching quants…  ·  {summary}"
-        self.say(summary, "idle")
+            parts.append("fetching quants…")
+        if self.filter_text:
+            parts.append(f"filter '{self.filter_text}' · esc clears")
+        self.say("  ·  ".join(parts) or "Pick a model with the mouse or the arrow keys.", "idle")
 
     def action_help(self) -> None:
         self.push_screen(dialogs.Info("Keys", keys_help(self.colour("accent"))))
@@ -255,24 +285,23 @@ class Models(App[bool]):
         keep = self.selected()
         table.clear(columns=True)
         model_width = min(50, max([len(row.label) for row in rows] + [12]))
-        table.add_column("", width=3, key="state")
+        table.add_column("Status", width=17, key="state")
         table.add_column("Model", width=model_width, key="model")
         table.add_column(Text("Size", justify="right"), width=8, key="size")
-        table.add_column("Lang", width=7, key="lang")
-        table.add_column("", key="actions")
-        self.names, self.sizes, self.states = [], {}, {}
+        table.add_column("Lang", width=6, key="lang")
+        table.add_column("Actions", key="actions")
+        self.names, self.sizes = [], {}
         for row in rows:
             on_disk, is_loaded = row.name in have, row.name in loaded
             self.sizes[row.name] = row.size
-            self.states[row.name] = (on_disk, is_loaded)
             size = Text(row.size, justify="right", style="dim italic" if row.estimated else "")
             language = Text(LANGUAGE_SHORT.get(row.languages, row.languages), style="dim")
             table.add_row(
-                self.state_glyphs(row.name == default, is_loaded, on_disk),
+                self.state_pills(row.name == default, is_loaded, on_disk),
                 row.label,
                 size,
                 language,
-                self.row_hint(on_disk),
+                self.row_actions(row.name, on_disk, is_loaded),
                 key=row.name,
             )
             self.names.append(row.name)
@@ -280,26 +309,29 @@ class Models(App[bool]):
         empty = self.query_one("#empty", Static)
         empty.display = not rows
         empty.update(f"No models match '{self.filter_text}'  ·  / to change it, esc to clear it")
-        self.highlighted = None
         if keep in self.names:
             table.move_cursor(row=self.names.index(keep))
-        if self.names:
-            self.show_row_actions(self.selected())
         self.show_server(server_up)
         self.summary = self.describe(have)
+        self.query_one("#models-panel").border_subtitle = self.summary
         if not self.busy:
             self.say_idle()
 
-    def state_glyphs(self, is_default: bool, is_loaded: bool, on_disk: bool) -> Text:
-        """★ the default, ● loaded in memory, ✓ on disk (shown when neither of the others is)."""
-        glyphs = Text()
+    def pill(self, label: str, role: str) -> Text:
+        """A fixed-width label on a coloured background, e.g. the `default` pill."""
+        return Text(f" {label} ", style=f"bold {self.colour('background')} on {self.colour(role)}")
+
+    def state_pills(self, is_default: bool, is_loaded: bool, on_disk: bool) -> Text:
+        """default and loaded as coloured pills; on disk, in grey, for a download that is neither."""
+        pills = Text()
         if is_default:
-            glyphs.append("★", style=f"bold {self.colour('warning')}")
+            pills.append(self.pill("default", "warning"))
+            pills.append(" ")
         if is_loaded:
-            glyphs.append("●", style=f"bold {self.colour('success')}")
-        if not glyphs and on_disk:
-            glyphs.append("✓", style="dim")
-        return glyphs
+            pills.append(self.pill("loaded", "success"))
+        if not pills and on_disk:
+            pills.append(Text(" on disk ", style=f"{self.colour('foreground')} on {self.colour('panel')}"))
+        return pills
 
     def show_server(self, server_up: bool) -> None:
         pill = self.query_one("#server-pill", Static)
@@ -308,37 +340,24 @@ class Models(App[bool]):
         else:
             pill.update(Text("○ server off", style="dim"))
 
-    def row_hint(self, on_disk: bool) -> Text:
-        """What a row shows when it is not highlighted: one dim glyph for its main action."""
-        return Text("▶" if on_disk else "↓", style="dim")
-
     def row_actions(self, name: str, on_disk: bool, is_loaded: bool) -> Text:
-        """Clickable links for the highlighted row: Download before it is on disk, then Serve, Stop and Delete."""
+        """Clickable buttons for one row: Download before it is on disk, then Serve, Stop and Delete."""
+        panel = self.colour("panel")
 
-        def link(label: str, action: str, style: str) -> Text:
+        def button(label: str, action: str, colour: str) -> Text:
+            style = f"bold {colour} on {panel}"
             return Text.from_markup(f"[{style}][@click=app.on_row({name!r}, {action!r})] {label} [/][/]")
 
         if not on_disk:
-            return link("↓ Download", "pull", f"bold {self.colour('accent')}")
+            return button("Download", "pull", self.colour("accent"))
+        stop_colour = self.colour("foreground") if is_loaded else f"dim {self.colour('foreground')}"
         actions = Text()
-        actions.append(link("▶ Serve", "serve_model", f"bold {self.colour('success')}"))
-        actions.append(link("■ Stop", "unload", "bold" if is_loaded else "dim"))
-        actions.append(link("✕ Delete", "remove", self.colour("error")))
+        actions.append(button("Serve", "serve_model", self.colour("success")))
+        actions.append(" ")
+        actions.append(button("Stop", "unload", stop_colour))
+        actions.append(" ")
+        actions.append(button("Delete", "remove", self.colour("error")))
         return actions
-
-    def show_row_actions(self, name: str | None) -> None:
-        """Only the highlighted row shows its links, so the rest of the list stays quiet."""
-        table = self.query_one(DataTable)
-        if self.highlighted in self.states and self.highlighted != name:
-            on_disk, _ = self.states[self.highlighted]
-            table.update_cell(self.highlighted, "actions", self.row_hint(on_disk))
-        if name in self.states:
-            on_disk, is_loaded = self.states[name]
-            table.update_cell(name, "actions", self.row_actions(name, on_disk, is_loaded), update_width=True)
-        self.highlighted = name
-
-    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
-        self.show_row_actions(event.row_key.value)
 
     async def action_on_row(self, name: str, action: str) -> None:
         """A click on a row's action link: select that row, then run the action as its key would."""
@@ -390,10 +409,7 @@ class Models(App[bool]):
 
     def describe(self, have: dict[str, Any]) -> str:
         on_disk = sum(model["size"] for model in have.values())
-        parts = [f"{len(have)} on disk · {dialogs.human(on_disk)}"]
-        if self.filter_text:
-            parts.append(f"filter '{self.filter_text}' (esc clears)")
-        return "  ·  ".join(parts)
+        return f"{len(have)} on disk · {dialogs.human(on_disk)}"
 
     @work
     async def action_filter(self) -> None:

@@ -206,7 +206,7 @@ def test_download_progress_shows_on_the_status_line(app, monkeypatch):
 def test_status_line_and_filter(app):
     async def go():
         async with app.run_test(size=(160, 36)) as pilot:
-            status = str(app.query_one("#status").render())
+            status = str(app.query_one("#models-panel").border_subtitle)
             pill = str(app.query_one("#server-pill").render())
             await pilot.press("slash")
             await pilot.pause()
@@ -234,7 +234,7 @@ def test_auto_refresh_picks_up_changes_made_elsewhere(app):
             await pilot.pause()
             return app.query_one(DataTable).get_cell(target, "state").plain
 
-    assert "★" in asyncio.run(go())
+    assert "default" in asyncio.run(go())
 
 
 def test_enter_in_a_confirm_takes_its_default():
@@ -292,20 +292,13 @@ def test_options_accepts_only_host_names_and_addresses(host, valid):
     assert tui.dialogs.valid_host(host) is valid
 
 
-def test_only_the_highlighted_row_shows_its_action_links(app):
+def test_every_row_has_its_buttons(app):
     async def go():
-        async with app.run_test(size=(160, 36)) as pilot:
+        async with app.run_test(size=(160, 36)):
             table = app.query_one(DataTable)
-            first, second = app.names[0], app.names[1]
-            before = (table.get_cell(first, "actions").plain, table.get_cell(second, "actions").plain)
-            await pilot.press("down")
-            await pilot.pause()
-            after = (table.get_cell(first, "actions").plain, table.get_cell(second, "actions").plain)
-            return before, after
+            return [table.get_cell(name, "actions").plain.split() for name in app.names[:3]]
 
-    before, after = asyncio.run(go())
-    assert "Download" in before[0] and before[1].strip() == "↓"
-    assert after[0].strip() == "↓" and "Download" in after[1]
+    assert asyncio.run(go()) == [["Download"]] * 3
 
 
 def test_confirm_buttons_answer_it():
