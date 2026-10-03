@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import logging
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -92,8 +94,45 @@ ROW_BUTTON_WIDTH = 11  # every button in the list is this wide, so they line up 
 LANGUAGE_SHORT = {"English": "en", "Multilingual": "multi", "100+ languages": "100+"}
 
 
+def terminal_background() -> tuple[float, float, float] | None:
+    """The terminal's background colour as red, green, blue in 0..1, by asking it (OSC 11), or None when it does
+    not answer within 0.3 s. Only before the app starts: after that Textual reads the terminal's replies."""
+    if termios is None or not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return None
+    import select
+    import tty
+
+    stdin = sys.stdin.fileno()
+    saved = termios.tcgetattr(stdin)
+    reply = b""
+    try:
+        tty.setcbreak(stdin)
+        sys.stdout.write("\x1b]11;?\x1b\\")
+        sys.stdout.flush()
+        deadline = time.monotonic() + 0.3
+        while not (reply.endswith(b"\x07") or reply.endswith(b"\x1b\\")):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not select.select([stdin], [], [], remaining)[0]:
+                break
+            reply += os.read(stdin, 64)
+    finally:
+        termios.tcsetattr(stdin, termios.TCSADRAIN, saved)
+    # e.g. ESC ] 11 ; rgb:ffff/ffff/ffff BEL, with 1 to 4 hex digits a channel
+    match = re.search(rb"rgb:([0-9a-fA-F]+)/([0-9a-fA-F]+)/([0-9a-fA-F]+)", reply)
+    if not match:
+        return None
+    return tuple(int(channel, 16) / (16 ** len(channel) - 1) for channel in match.groups())  # type: ignore[return-value]
+
+
+@functools.cache
 def system_theme() -> str:
-    """textual-light or textual-dark, from the terminal's colours when it says, else the OS appearance."""
+    """textual-light or textual-dark, from the terminal's own background colour when it answers, else what it
+    says in COLORFGBG, else the OS appearance. Asked once per process, before the app starts."""
+    background_colour = terminal_background()
+    if background_colour is not None:
+        red, green, blue = background_colour
+        luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+        return "textual-light" if luminance > 0.5 else "textual-dark"
     colours = os.environ.get("COLORFGBG", "")  # "15;0": foreground 15 on background 0
     background = colours.rpartition(";")[2]
     if background.isdigit():
@@ -937,6 +976,7 @@ def restore_terminal() -> None:
 
 def manage() -> bool:
     """Open the model manager. True when the user chose to serve."""
+    system_theme()  # ask the terminal for its colours now, while nothing else is reading its replies
     try:
         return bool(Models().run())
     finally:

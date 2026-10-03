@@ -401,4 +401,17 @@ def test_row_actions_offer_download_until_on_disk(app):
 )
 def test_theme_follows_the_terminal_colours(monkeypatch, colours, theme):
     monkeypatch.setenv("COLORFGBG", colours)
+    monkeypatch.setattr(tui, "terminal_background", lambda: None)
+    tui.system_theme.cache_clear()
     assert tui.system_theme() == theme
+    tui.system_theme.cache_clear()
+
+
+@pytest.mark.parametrize(
+    ("background", "theme"), [((1.0, 1.0, 1.0), "textual-light"), ((0.1, 0.1, 0.12), "textual-dark")]
+)
+def test_theme_follows_the_background_the_terminal_reports(monkeypatch, background, theme):
+    monkeypatch.setattr(tui, "terminal_background", lambda: background)
+    tui.system_theme.cache_clear()
+    assert tui.system_theme() == theme
+    tui.system_theme.cache_clear()
