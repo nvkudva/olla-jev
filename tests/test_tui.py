@@ -154,3 +154,21 @@ def test_quit_during_a_download_asks_first(app):
         return app.return_value
 
     assert asyncio.run(go()) is False
+
+
+def test_a_failed_job_stays_on_the_status_line(app):
+    async def boom():
+        raise RuntimeError("disk full")
+
+    async def go():
+        async with app.run_test(size=(120, 36)) as pilot:
+            await app.job("Downloading x …", boom)
+            await pilot.pause()
+            status = str(app.query_one("#status").render())
+            await pilot.press("e")
+            await pilot.pause()
+            return status, type(app.screen).__name__
+
+    status, screen = asyncio.run(go())
+    assert "Downloading x failed" in status and "e for details" in status
+    assert screen == "Info"

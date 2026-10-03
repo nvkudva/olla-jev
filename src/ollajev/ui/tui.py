@@ -54,6 +54,7 @@ class Models(App[bool]):
         Binding("o", "options", "Options"),
         Binding("b", "service", "Service"),
         Binding("s", "serve", "Serve"),
+        Binding("e", "last_error", "Error", show=False),
         Binding("escape", "cancel_job", "Cancel"),
         Binding("q", "quit_app", "Quit"),
     ]
@@ -65,6 +66,7 @@ class Models(App[bool]):
         self.cancel = threading.Event()  # set by Esc; a download in progress stops at its next update
         self.downloading = False  # only downloads can be cancelled; loads and asks run to the end
         self.local: tuple[str, Any, Any] | None = None  # model, ask, release: loaded in this process
+        self.last_error: str | None = None  # kept on the status line until the next job succeeds
         self.loading: str | None = None  # the model being loaded into this process, if any
         # One load at a time: two Ask dialogs opened in a row must not hold two models in memory.
         self.load_lock = threading.Lock()
@@ -86,7 +88,7 @@ class Models(App[bool]):
         table.add_column("Languages", width=16)
         table.add_column("Status")
         self.reload()
-        self.say("Enter downloads a model and makes it the default. Press s to serve it.")
+        self.say_idle()
         self.load_quants()
 
     @work(group="quants")
@@ -99,6 +101,20 @@ class Models(App[bool]):
 
     def say(self, text: str) -> None:
         self.query_one("#status", Static).update(text)
+
+    def say_idle(self) -> None:
+        """The status line between jobs: the last error until a job succeeds, else the main hint."""
+        if self.last_error:
+            first_line = self.last_error.splitlines()[0]
+            self.say(f"! {first_line}  (e for details)")
+        else:
+            self.say("Enter downloads a model and makes it the default. Press s to serve it.")
+
+    def action_last_error(self) -> None:
+        if self.last_error:
+            self.push_screen(dialogs.Info("Last error", self.last_error))
+        else:
+            self.notify("No errors so far")
 
     def loaded(self, server_up: bool) -> set[str]:
         if server_up:
@@ -192,18 +208,21 @@ class Models(App[bool]):
         self.cancel.clear()
         self.say(text)
         try:
-            return await work_fn()
+            result = await work_fn()
+            self.last_error = None
+            return result
         except store.Cancelled:
             self.notify("Cancelled; a later pull resumes where it stopped", severity="warning")
             return None
         except Exception as exc:
             log.exception("%s failed", text)
+            self.last_error = f"{text.rstrip(' …')} failed:\n{exc or type(exc).__name__}"
             self.notify(str(exc) or type(exc).__name__, severity="error", timeout=10)
             return None
         finally:
             self.busy = False
             self.reload()
-            self.say("")
+            self.say_idle()
 
     def action_cancel_job(self) -> None:
         if self.downloading:
