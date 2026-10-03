@@ -45,6 +45,7 @@
     </div>
     <div class="bar-aside">
       <dl class="readout">
+        <div><dt><label for="model">Model</label></dt><dd><select id="model" aria-label="Model that answers the request"></select></dd></div>
         <div><dt>Served by</dt><dd id="r-model">—</dd></div>
         <div><dt>Limits</dt><dd id="r-limits">—</dd></div>
         <div><dt>API server</dt><dd>/v1/systemone</dd></div>
@@ -76,7 +77,6 @@
           <div class="q">
             <div class="row">
               <label for="state">state</label>
-              <select id="model" class="push" aria-label="Model that answers the request"></select>
             </div>
             <textarea id="state" placeholder="The state every question refers to — a customer message, a prompt, an email…&#10;⌘/Ctrl+Enter to send"></textarea>
           </div>

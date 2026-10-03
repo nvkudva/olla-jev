@@ -159,6 +159,8 @@ select { width: auto; }
   & div { display: flex; flex-direction: column; gap: 1px; }
   & dt { color: var(--muted); font-size: 11px; }
   & dd { margin: 0; font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+  & dt label { font: inherit; color: inherit; }
+  & select { font-family: var(--mono); font-size: 12px; padding: 1px 6px; max-width: 26ch; }
 }
 
 .theme-toggle { margin-left: 12px; font: 400 11px var(--mono); padding: 2px 7px; background: transparent; color: var(--muted); border: 1px solid var(--rule); border-radius: 2px; }
