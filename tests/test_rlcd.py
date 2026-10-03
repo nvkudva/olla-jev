@@ -32,8 +32,12 @@ def test_detects_rlcd_and_only_rlcd():
 
 
 def test_prompts_follow_the_reference_contract():
-    text, keys = rlcd.build("ctx", "intent", {"type": "choice", "instructions": "Why?", "criteria": {"a": "A", "b": None}})
-    assert text == "<<LABEL>>It is A<<LABEL>>It is b<<LABEL>>insufficient evidence<<SEP>>Question: Why?\n\nContext:\nctx"
+    text, keys = rlcd.build(
+        "ctx", "intent", {"type": "choice", "instructions": "Why?", "criteria": {"a": "A", "b": None}}
+    )
+    assert (
+        text == "<<LABEL>>It is A<<LABEL>>It is b<<LABEL>>insufficient evidence<<SEP>>Question: Why?\n\nContext:\nctx"
+    )
     assert keys == ["a", "b"]
     text, keys = rlcd.build("ctx", "q", {"type": "score", "instructions": "How bad?", "criteria": ["low", "high"]})
     assert text.startswith("<<LABEL>>low (Value: 0)<<LABEL>>high (Value: 1)<<LABEL>>insufficient evidence<<SEP>>")

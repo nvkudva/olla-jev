@@ -22,8 +22,10 @@ LIMITS = {"max_options": SLOTS - 1, "max_levels": SLOTS - 1, "max_tokens": MAX_T
 
 def prompt(question: str, text: str, labels: list[str]) -> str:
     """<<LABEL>>label1<<LABEL>>label2<<SEP>>text, labels ending with the abstention slot."""
-    return "".join(f"<<LABEL>>{label}" for label in [*labels, ABSTAIN]) + "<<SEP>>" + (
-        f"Question: {question}\n\nContext:\n{text}" if question else text
+    return (
+        "".join(f"<<LABEL>>{label}" for label in [*labels, ABSTAIN])
+        + "<<SEP>>"
+        + (f"Question: {question}\n\nContext:\n{text}" if question else text)
     )
 
 

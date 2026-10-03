@@ -226,7 +226,7 @@ def test_search_lists_supported_models_first(monkeypatch):
 
     class Api:
         def model_info(self, repo_id, **kwargs):
-            raise store.RepositoryNotFoundError("missing")
+            return next(m for m in found if m.id == repo_id)
 
         def list_models(self, **kwargs):
             return found
@@ -328,15 +328,12 @@ def test_load_refuses_a_model_that_does_not_fit_in_free_memory(monkeypatch, tmp_
     monkeypatch.setattr(manager, "pick_device", lambda requested: "cpu")
     monkeypatch.setattr(manager, "free_memory", lambda device: 999)
     r = SimpleNamespace(revision="r" * 12, family=None)
-    with pytest.raises(NotEnoughMemory, match="needs about .* but only .* free on cpu"):
+    with pytest.raises(NotEnoughMemory, match=r"needs about .* but only .* free on cpu"):
         manager.Manager()._load("m", r)
 
 
 def test_a_cancelled_download_stops_at_its_next_progress_update(monkeypatch):
     import threading
-    from types import SimpleNamespace
-
-    from ollajev import store
 
     def snapshot_download(*args, tqdm_class, **kwargs):
         bar = tqdm_class(total=10, disable=True)

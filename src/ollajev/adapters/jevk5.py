@@ -16,8 +16,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from .._vendor.jevk5 import prompt
 from .. import names
+from .._vendor.jevk5 import prompt
 from . import instructions_or_name
 from .base import Loaded
 

@@ -315,6 +315,7 @@ class Models(App[bool]):
         self.names: list[str] = []
         self.busy = False
         self.cancel = threading.Event()  # set by Esc; a download in progress stops at its next update
+        self.downloading = False  # only downloads can be cancelled; loads and asks run to the end
         self.local: tuple[str, Any, Any] | None = None  # model, ask, release: loaded in this process
         self.quants: dict[str, list[store.Variant]] = {}  # catalog GGUF repo -> all its quants on Hugging Face
 
@@ -439,9 +440,11 @@ class Models(App[bool]):
             self.say("")
 
     def action_cancel_job(self) -> None:
-        if self.busy:
+        if self.downloading:
             self.cancel.set()
             self.say("Cancelling …")
+        elif self.busy:
+            self.notify("Only downloads can be cancelled", severity="warning")
 
     async def fetch(self, name: str) -> store.Resolved | None:
         r = await asyncio.to_thread(lambda: store.resolve(lookup(name)))
@@ -457,7 +460,11 @@ class Models(App[bool]):
                 return None
             store.trust(r)
         self.say(f"Downloading {canonical(r)} …")
-        await asyncio.to_thread(store.download, r, self.cancel)
+        self.downloading = True
+        try:
+            await asyncio.to_thread(store.download, r, self.cancel)
+        finally:
+            self.downloading = False
         prefetch = getattr(r.family, "prefetch", None)
         if prefetch:
             self.say("Downloading the base model …")

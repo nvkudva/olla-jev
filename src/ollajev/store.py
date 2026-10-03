@@ -10,8 +10,8 @@ from pathlib import Path
 
 from huggingface_hub import CachedRevisionInfo, HfApi, HFCacheInfo, snapshot_download
 from huggingface_hub import scan_cache_dir as _scan_cache_dir
-from huggingface_hub.errors import CacheNotFound, LocalEntryNotFoundError, RepositoryNotFoundError
 from huggingface_hub.constants import HF_HUB_CACHE
+from huggingface_hub.errors import CacheNotFound, LocalEntryNotFoundError, RepositoryNotFoundError
 from huggingface_hub.file_download import repo_folder_name
 from huggingface_hub.utils import filter_repo_objects
 from huggingface_hub.utils import tqdm as hf_tqdm
@@ -245,18 +245,24 @@ def search(query: str, limit: int = 40) -> list[Hit]:
         words = query.lower().split()
         if not words:
             return []
-        found = [
-            m
-            for m in api.list_models(search=max(words, key=len), sort="downloads", limit=200, expand=expand)
+        # Listing 200 repos takes 25 s with the default fields and 50 s with `siblings`, but under a second
+        # with `downloads` only, so list ids and read the files of the first matches one by one.
+        ids = [
+            m.id
+            for m in api.list_models(search=max(words, key=len), sort="downloads", limit=200, expand=["downloads"])
             if all(w in m.id.lower() for w in words)
-        ]
+        ][:limit]
+        found = None
 
     def hit(m) -> Hit:
         family = _family(m.id, [s.rfilename for s in m.siblings or []], getattr(m, "base_models", None))
         return Hit(m.id, m.downloads or 0, family.name if family else None)
 
-    with ThreadPoolExecutor(8) as pool:  # a quantized copy costs one lookup of its base repo
-        hits = list(pool.map(hit, found))
+    if found is not None:
+        hits = [hit(m) for m in found]
+    else:  # one chain per repo: its files, then (for a quantized copy) its base repo's files
+        with ThreadPoolExecutor(16) as pool:
+            hits = list(pool.map(lambda repo_id: hit(api.model_info(repo_id, expand=expand)), ids))
     return sorted(hits, key=lambda h: h.family is None)[:limit]  # stable: keeps the download order
 
 
@@ -335,20 +341,12 @@ def _cancellable(cancel: threading.Event | None) -> type[hf_tqdm] | None:
 def download(r: Resolved, cancel: threading.Event | None = None) -> str:
     """Fetch the snapshot, then pin the repo to this commit if it has no pin yet. A copy also fetches its base's
     config files and records which base commit they came from. Setting `cancel` aborts it with Cancelled."""
-    bar = _cancellable(cancel)
+    fetch = functools.partial(snapshot_download, cache_dir=config.models_dir(), tqdm_class=_cancellable(cancel))
     if r.base:
-        snapshot_download(
-            r.base.repo_id,
-            revision=r.base.revision,
-            allow_patterns=r.base.allow,
-            cache_dir=config.models_dir(),
-            tqdm_class=bar,
-        )
+        fetch(r.base.repo_id, revision=r.base.revision, allow_patterns=r.base.allow)
         with config.edit() as data:
             data.setdefault("bases", {})[r.repo_id] = {"repo": r.base.repo_id, "revision": r.base.revision}
-    path = snapshot_download(
-        r.repo_id, revision=r.revision, allow_patterns=r.allow, cache_dir=config.models_dir(), tqdm_class=bar
-    )
+    path = fetch(r.repo_id, revision=r.revision, allow_patterns=r.allow)
     if r.repo_id not in pins():
         _pin(r.repo_id, r.revision, r.created)
     return path
