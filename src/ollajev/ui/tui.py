@@ -44,7 +44,6 @@ Screen { background: $background; }
 #brand Button.menu { width: auto; min-width: 0; padding: 0 1; margin-right: 1; background: transparent; border: none; }
 #brand Button.menu:hover { color: $accent; background: transparent; }
 #brand Button.menu:focus { background: transparent; text-style: none; }
-#server-pill { width: 1fr; text-align: right; }
 #models-panel {
     height: 1fr; margin: 0 1; background: $surface; border: round $primary 60%;
     border-title-color: $text; border-title-style: bold; border-subtitle-color: $text-muted;
@@ -177,7 +176,6 @@ MENU = [
     ("n", "+ Add", "add"),
     ("d", "★ Default", "set_default"),
     ("/", "▽ Filter", "filter"),
-    ("w", "⧉ Demo", "open_demo"),
     ("o", "⚙ Settings", "options"),
     ("?", "? Help", "help"),
     ("q", "← Quit", "quit_app"),
@@ -235,10 +233,9 @@ class Models(App[bool]):
         with Horizontal(id="brand"):
             yield Static("🦒 ollajev", id="brand-name")
             for key, label, action in MENU:
-                item = Button(f"[b $accent]{key}[/] {label}", id=f"do-{action}", compact=True, classes="menu")
+                item = Button(f"{label} ([b $accent]{key}[/])", id=f"do-{action}", compact=True, classes="menu")
                 item.can_focus = False  # the list keeps the keyboard; the menu is for the mouse and its keys
                 yield item
-            yield Static("", id="server-pill")
         with Vertical(id="models-panel") as panel:
             panel.border_title = "Models"
             yield DataTable(cursor_type="row")
@@ -386,7 +383,6 @@ class Models(App[bool]):
         empty.update(f"No models match '{self.filter_text}'  ·  / to change it, esc to clear it")
         if keep in self.names:
             table.move_cursor(row=self.names.index(keep))
-        self.show_server(server_up)
         self.show_server_panel(server_up, loaded)
         self.summary = self.describe(have)
         self.query_one("#models-panel").border_subtitle = self.summary
@@ -409,13 +405,6 @@ class Models(App[bool]):
         else:
             labels.append("○ available", style="dim")
         return labels
-
-    def show_server(self, server_up: bool) -> None:
-        pill = self.query_one("#server-pill", Static)
-        if server_up:
-            pill.update(Text(f"● serving {client.server_url()}", style=self.colour("success")))
-        else:
-            pill.update(Text("○ server off", style="dim"))
 
     def row_actions(self, name: str, on_disk: bool, is_loaded: bool) -> Text:
         """Clickable buttons for one row: Download before it is on disk, then Serve and Delete; Info always."""
@@ -739,14 +728,13 @@ class Models(App[bool]):
         if any(char.isspace() for char in short) or short in self.names:
             self.notify(f"'{short}' cannot be a short name: no spaces, and not a model's own name", severity="error")
             return
-        current = config.load().get("aliases", {}).get(short)
+        current = config.aliases().get(short.lower())
         if current and current != name:
-            replace = dialogs.Confirm(f"Replace '{short}'?", f"It means {current} now.")
+            replace = dialogs.Confirm(f"Replace '{short.lower()}'?", f"It means {current} now.")
             if not await self.push_screen_wait(replace):
                 return
-        with config.edit() as data:
-            data.setdefault("aliases", {})[short] = name
-        self.notify(f"'{short}' now means {name}")
+        config.set_alias(short, name)
+        self.notify(f"'{short.lower()}' now means {name}")
 
     @work
     async def action_info(self) -> None:

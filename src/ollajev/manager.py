@@ -70,10 +70,10 @@ def default_model() -> str:
 
 
 def lookup(name: str | None) -> str:
-    """Request model name -> the name to resolve, following `cp` aliases and the default aliases."""
-    if not name or name in DEFAULT_ALIASES:
+    """Request model name -> the name to resolve, following `cp` aliases and the default aliases, ignoring case."""
+    if not name or name.lower() in DEFAULT_ALIASES:
         name = default_model()
-    return config.load().get("aliases", {}).get(name, name)
+    return config.alias(name)
 
 
 @dataclass

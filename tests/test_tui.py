@@ -262,17 +262,16 @@ def test_status_line_and_filter(app):
     async def go():
         async with app.run_test(size=(160, 36)) as pilot:
             status = str(app.query_one("#models-panel").border_subtitle)
-            pill = str(app.query_one("#server-pill").render())
             await pilot.press("slash")
             await pilot.pause()
             for key in "julia":
                 await pilot.press(key)
             await pilot.press("enter")
             await pilot.pause()
-            return status, pill, list(app.names)
+            return status, list(app.names)
 
-    status, pill, names = asyncio.run(go())
-    assert "downloaded" in status and "server off" in pill
+    status, names = asyncio.run(go())
+    assert "downloaded" in status
     assert names and all("julia" in name.lower() for name in names)
 
 

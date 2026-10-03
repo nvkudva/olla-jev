@@ -162,6 +162,37 @@ def edit() -> Iterator[dict[str, Any]]:
         save(data)
 
 
+def aliases() -> dict[str, str]:
+    """Saved short names -> model names. Keys are lower case, as `set_alias` stores them."""
+    return {short.lower(): target for short, target in load().get("aliases", {}).items()}
+
+
+def alias(name: str) -> str:
+    """`name` as its alias points, or `name` itself. Aliases are matched ignoring case."""
+    return aliases().get(name.lower(), name)
+
+
+def set_alias(short: str, target: str) -> str:
+    """Save `short` as a name for `target` and return the stored (lower case) short name."""
+    short = short.strip().lower()
+    with edit() as data:
+        saved = data.setdefault("aliases", {})
+        for existing in [key for key in saved if key != short and key.lower() == short]:
+            del saved[existing]  # an older save may have used other capitals
+        saved[short] = target
+    return short
+
+
+def remove_alias(name: str) -> str | None:
+    """Forget the alias `name` when it has one and return the alias that was removed, else None."""
+    with edit() as data:
+        stored = {short.lower(): short for short in data.get("aliases", {})}
+        key = stored.get(name.lower())
+        if key is not None:
+            data["aliases"].pop(key)
+    return key
+
+
 def update(**fields: Any) -> dict[str, Any]:
     with edit() as data:
         data.update(fields)

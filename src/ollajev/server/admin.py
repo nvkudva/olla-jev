@@ -63,7 +63,7 @@ def tags() -> list[dict[str, Any]]:
     """One entry per downloaded weight file: a GGUF repo with two quants on disk is two models, and so is an ONNX
     repo with two exports."""
     out = []
-    for repo_id, (size, modified) in sorted(store.downloaded().items()):
+    for repo_id, (_, modified) in sorted(store.downloaded().items()):
         revision = store.pins()[repo_id]
         rev = store.snapshot(repo_id, revision)
         if rev is None:
@@ -82,7 +82,8 @@ def tags() -> list[dict[str, Any]]:
                     if (snap / f).is_file()
                 )
             else:
-                weight = size
+                # No one weight file: the whole repo, plus the base a family needs beside it (kev's Qwen).
+                weight = store.on_disk(resolved)
             out.append(_describe(canonical(resolved), resolved, weight, modified))
     return out
 
@@ -238,9 +239,7 @@ def api_pull(req: PullRequest) -> Any:
 def api_delete(req: ModelRef) -> Any:
     from . import api
 
-    with config.edit() as data:
-        removed = data.get("aliases", {}).pop(req.model, None)
-    if removed is not None:
+    if config.remove_alias(req.model) is not None:
         return {"status": "success"}
     try:
         resolved = store.resolve(lookup(req.model), online=False)
@@ -252,9 +251,7 @@ def api_delete(req: ModelRef) -> Any:
 
 @router.post("/copy")
 def api_copy(req: CopyRequest) -> Any:
-    target = lookup(req.source)
-    with config.edit() as data:
-        data.setdefault("aliases", {})[req.destination] = target
+    config.set_alias(req.destination, lookup(req.source))
     return {"status": "success"}
 
 

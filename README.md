@@ -155,7 +155,7 @@ To use a different model:
 | Another default model | `ollajev setup`, move to a model, press Enter (it downloads if needed and becomes the default), then `s` to serve. A server that is already running picks up the saved default for requests that omit `model` |
 | Serve a model once, without changing the default | `ollajev serve <name>` |
 | Ask a model from the terminal | `ollajev run <name>` |
-| A short name for a long one | `ollajev cp <name> julia`, then send `"model": "julia"` |
+| A short name for a long one | `ollajev cp <name> julia`, then send `"model": "julia"` (aliases are saved in lower case and matched ignoring case) |
 | Free memory now | `ollajev stop <name>` (idle models also unload after `OLLAJEV_KEEP_ALIVE`) |
 | Free disk space | `ollajev rm <name>` |
 

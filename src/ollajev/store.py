@@ -447,6 +447,19 @@ def bytes_on_disk(repo_id: str) -> int:
     return sum(p.stat().st_size for p in blobs.glob("*") if p.is_file()) if blobs.is_dir() else 0
 
 
+def extras(resolved: Resolved) -> list[tuple[str, str | None, list[str]]]:
+    """The repos `r` needs on disk beside its own, as (repo, revision, files): kev's base model. Empty until `r`
+    is downloaded, because only its own files say which base it is."""
+    read = getattr(resolved.family, "extras", None)
+    path = local_path(resolved)
+    return read(path) if read and path else []
+
+
+def on_disk(resolved: Resolved) -> int:
+    """Bytes the model takes in the cache: its own repo plus the repos its family needs beside it."""
+    return bytes_on_disk(resolved.repo_id) + sum(bytes_on_disk(repo) for repo, _, _ in extras(resolved))
+
+
 def downloaded() -> dict[str, tuple[int, float]]:
     """repo_id -> (bytes on disk, last modified) for pinned repos in the cache."""
     wanted = pins()

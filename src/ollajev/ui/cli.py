@@ -99,18 +99,15 @@ def cmd_rm(args: argparse.Namespace) -> None:
         if client.server_running():
             client.call("DELETE", "/api/delete", {"model": name})
         else:
-            with config.edit() as data:
-                removed = data.get("aliases", {}).pop(name, None)
+            removed = config.remove_alias(name)
             if removed is None:
                 store.remove(store.resolve(lookup(name), online=False))
         print(f"deleted '{name}'")
 
 
 def cmd_cp(args: argparse.Namespace) -> None:
-    target = lookup(args.source)
-    with config.edit() as data:
-        data.setdefault("aliases", {})[args.destination] = target
-    print(f"copied '{args.source}' to '{args.destination}'")
+    short = config.set_alias(args.destination, lookup(args.source))
+    print(f"copied '{args.source}' to '{short}'")
 
 
 def cmd_ps(args: argparse.Namespace) -> None:

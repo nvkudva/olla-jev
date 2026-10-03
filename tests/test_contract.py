@@ -415,3 +415,26 @@ def test_saved_settings_apply_unless_the_environment_overrides(tmp_path, monkeyp
     assert (config.keep_alive(), config.max_loaded_models()) == (3600, 3)
     monkeypatch.setenv("OLLAJEV_MAX_LOADED_MODELS", "2")
     assert config.max_loaded_models() == 2
+
+
+def test_aliases_are_saved_lower_case_and_matched_ignoring_case(tmp_path, monkeypatch):
+    from ollajev import config
+    from ollajev.manager import lookup
+
+    monkeypatch.setenv("OLLAJEV_HOME", str(tmp_path))
+    assert config.set_alias("Julia", "SupersonicLabs/Julia-1") == "julia"
+    assert config.load()["aliases"] == {"julia": "SupersonicLabs/Julia-1"}
+    assert lookup("JULIA") == "SupersonicLabs/Julia-1"
+    assert lookup("JuliA") == "SupersonicLabs/Julia-1"
+    assert config.remove_alias("JuLiA") == "julia"
+    assert config.aliases() == {}
+
+
+def test_an_older_capitalised_alias_is_matched_and_replaced(tmp_path, monkeypatch):
+    from ollajev import config
+
+    monkeypatch.setenv("OLLAJEV_HOME", str(tmp_path))
+    config.update(aliases={"Jev": "u/a"})
+    assert config.alias("jev") == "u/a"
+    config.set_alias("jev", "u/b")
+    assert config.load()["aliases"] == {"jev": "u/b"}

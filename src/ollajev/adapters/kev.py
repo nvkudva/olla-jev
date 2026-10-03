@@ -6,12 +6,23 @@ The base model is fetched at the revision head.pt names.
 
 from __future__ import annotations
 
+import functools
 import os
 from typing import Any
 
 from .base import Loaded
 
 LIMITS = {"max_options": 255, "max_levels": 10, "max_tokens": 8192}
+BASE_FILES = ["*.json", "*.safetensors", "*.txt", "*.jinja", "tokenizer*", "merges.txt", "vocab.json"]
+
+
+@functools.lru_cache(maxsize=32)
+def _base(head: str) -> list[tuple[str, str | None, list[str]]]:
+    """The base repo head.pt names, with the revision and the files it needs. Cached: the path carries its commit."""
+    import torch
+
+    meta = torch.load(head, map_location="cpu", weights_only=True)
+    return [(meta["base"], meta.get("base_revision"), BASE_FILES)]
 
 
 class _Kev:
@@ -27,19 +38,18 @@ class _Kev:
     def allow_patterns(self, resolved) -> list[str]:
         return ["*.json", "*.safetensors", "head.pt", "*.txt", "*.jinja"]
 
+    def extras(self, path: str) -> list[tuple[str, str | None, list[str]]]:
+        """The base model head.pt names, which has to sit in the cache beside this repo. Empty until downloaded."""
+        head = os.path.join(path, "head.pt")
+        return _base(head) if os.path.isfile(head) else []
+
     def prefetch(self, path: str, tqdm_class=None) -> None:
         """Download the base model head.pt names, so `pull` leaves nothing to fetch at load time. It goes to the
         default Hugging Face cache, where the vendored loader looks for it."""
-        import torch
         from huggingface_hub import snapshot_download
 
-        meta = torch.load(f"{path}/head.pt", map_location="cpu", weights_only=True)
-        snapshot_download(
-            meta["base"],
-            revision=meta.get("base_revision"),
-            allow_patterns=["*.json", "*.safetensors", "*.txt", "*.jinja", "tokenizer*", "merges.txt", "vocab.json"],
-            tqdm_class=tqdm_class,
-        )
+        for repo, revision, allow in self.extras(path):
+            snapshot_download(repo, revision=revision, allow_patterns=allow, tqdm_class=tqdm_class)
 
     def load(self, path: str, resolved, device: str | None) -> Loaded:
         import torch
