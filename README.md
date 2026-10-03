@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo.png" alt="ollajev giraffe logo" width="140"></p>
+
 # ollajev
 
 > **Run Jev-style decision models on your machine.** Pull a System One model from Hugging Face and
