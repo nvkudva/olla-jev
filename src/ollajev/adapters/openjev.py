@@ -14,6 +14,31 @@ def _option(name: str, description: Any) -> str:
     return name if description in (None, "") else f"{name}: {text_state(description)}"
 
 
+def _request(name: str, question: dict[str, Any]) -> tuple[dict[str, Any], list[str] | None]:
+    """A Jev question as an open-jev request, with the Jev keys of its options (None for noul)."""
+    kind, criteria = question["type"], cast(Any, question.get("criteria"))
+    if kind == "noul":
+        text = question.get("instructions") or (criteria or {}).get("true") or name.replace("_", " ")
+        return {"type": "noul", "instructions": text_state(text)}, None
+    instructions = text_state(instructions_or_name(name, question))
+    if kind == "choice":
+        options = [_option(option, description) for option, description in criteria.items()]
+        return {"type": "choice", "instructions": instructions, "options": options}, list(criteria)
+    options = [text_state(level) for level in criteria]
+    return {"type": "score", "instructions": instructions, "options": options}, [str(i) for i in range(len(criteria))]
+
+
+def _relabel(output: dict[str, Any], option_keys: list[str] | None) -> dict[str, Any]:
+    """open-jev labels probabilities by option text; Jev wants the option keys."""
+    if option_keys is None:
+        return output
+    probabilities = dict(zip(option_keys, output["probabilities"].values(), strict=False))
+    answer = {**output, "probabilities": probabilities}
+    if "choice" in answer:
+        answer["choice"] = max(probabilities, key=probabilities.__getitem__)
+    return answer
+
+
 class _OpenJev:
     name = "open-jev"
     runs_repo_code = True
@@ -32,41 +57,11 @@ class _OpenJev:
         model = OpenJev.from_pretrained(path, device=device)
 
         def predict(state: Any, questions: dict[str, dict[str, Any]]) -> dict[str, Any]:
-            ids, batch, keys = [], [], []
-            for qid, q in questions.items():
-                kind, crit = q["type"], cast(Any, q.get("criteria"))
-                if kind == "noul":
-                    text = q.get("instructions") or (crit or {}).get("true") or qid.replace("_", " ")
-                    batch.append({"type": "noul", "instructions": text_state(text)})
-                    keys.append(None)
-                elif kind == "choice":
-                    batch.append(
-                        {
-                            "type": "choice",
-                            "instructions": text_state(instructions_or_name(qid, q)),
-                            "options": [_option(n, d) for n, d in crit.items()],
-                        }
-                    )
-                    keys.append(list(crit))
-                else:
-                    batch.append(
-                        {
-                            "type": "score",
-                            "instructions": text_state(instructions_or_name(qid, q)),
-                            "options": [text_state(level) for level in crit],
-                        }
-                    )
-                    keys.append([str(i) for i in range(len(crit))])
-                ids.append(qid)
-            out = model.decide(text_state(state), batch)
+            requests = [_request(name, question) for name, question in questions.items()]
+            outputs = model.decide(text_state(state), [request for request, _ in requests])
             answers = {}
-            for qid, option_keys, answer in zip(ids, keys, out, strict=False):
-                if option_keys is not None:
-                    probabilities = dict(zip(option_keys, answer["probabilities"].values(), strict=False))
-                    answer = {**answer, "probabilities": probabilities}
-                    if "choice" in answer:
-                        answer["choice"] = max(probabilities, key=probabilities.__getitem__)
-                answers[qid] = answer
+            for name, (_, option_keys), output in zip(questions, requests, outputs, strict=False):
+                answers[name] = _relabel(output, option_keys)
             return {"answers": answers}
 
         return Loaded(resolved.name, "open-jev DeBERTa-v3 typed-decision encoder", None, self.limits(resolved), predict)

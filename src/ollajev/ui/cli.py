@@ -170,25 +170,50 @@ def configure_logging(path: str) -> None:
     root.handlers = [file, console]
 
 
+def listen_address(args: argparse.Namespace) -> tuple[str, int, bool]:
+    """Host, port, and whether the port was asked for explicitly (an explicit port is not scanned)."""
+    data = config.load()
+    env_host, env_port = config.host()
+    host_from_env = bool(os.environ.get("OLLAJEV_HOST"))
+    host = args.host or data.get("host") or env_host
+    explicit = args.port is not None or host_from_env
+    if args.port:
+        port = args.port
+    elif host_from_env:
+        port = env_port
+    else:
+        port = data.get("port") or env_port
+    return host, port, explicit
+
+
+def preload_name(model: str) -> str | None:
+    """The canonical name to load at startup, or None (with a message) when it cannot load yet."""
+    try:
+        resolved = store.resolve(lookup(model), online=False)
+    except LookupError:
+        print(f"==> {model} is not downloaded; serving without a model. Pull one with: ollajev pull {model}")
+        return None
+    name = canonical(resolved)
+    if not store.is_trusted(resolved):
+        print(f"==> {name} runs repo code and is not trusted yet; run: ollajev pull {name}")
+        return None
+    return name
+
+
 def cmd_serve(args: argparse.Namespace) -> None:
-    import uvicorn
-
-    from ..server import api
-
-    if getattr(args, "setup", False) or (
-        "default_model" not in config.load() and sys.stdin.isatty() and not args.model
-    ):
+    first_run = "default_model" not in config.load() and sys.stdin.isatty() and not args.model
+    if getattr(args, "setup", False) or first_run:
         from .tui import manage
 
         if not manage():
             return
-    data = config.load()
+    import uvicorn
+
+    from ..server import api
+
     for check in (config.keep_alive, config.max_loaded_models, config.max_body_bytes):
         check()  # fail on a bad value now, not on a request
-    env_host, env_port = config.host()
-    host = args.host or data.get("host") or env_host
-    explicit = args.port is not None or bool(os.environ.get("OLLAJEV_HOST"))
-    port = args.port or (env_port if os.environ.get("OLLAJEV_HOST") else data.get("port") or env_port)
+    host, port, explicit = listen_address(args)
     model = args.model or default_model()
 
     if not config.is_loopback(host) and not config.api_key():
@@ -204,16 +229,7 @@ def cmd_serve(args: argparse.Namespace) -> None:
     base = f"http://{client.url_host(host)}:{port}"
     config.update(server_url=base)
 
-    try:
-        resolved = store.resolve(lookup(model), online=False)
-        if store.is_trusted(resolved):
-            api.preload = canonical(resolved)
-        else:
-            print(
-                f"==> {canonical(resolved)} runs repo code and is not trusted yet; run: ollajev pull {canonical(resolved)}"
-            )
-    except LookupError:
-        print(f"==> {model} is not downloaded; serving without a model. Pull one with: ollajev pull {model}")
+    api.preload = preload_name(model)
     if api.preload:
         print(f"==> Loading {api.preload}", flush=True)
         api.pin_preload = True

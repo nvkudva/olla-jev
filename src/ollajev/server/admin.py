@@ -161,53 +161,69 @@ def report_bytes(resolved: store.Resolved, status: str, events: queue.Queue[dict
         done.set()
 
 
+def _untrusted_message(resolved: store.Resolved) -> str:
+    name = canonical(resolved)
+    return (
+        f"{name} runs Python code from its repo; trust is not available over HTTP. "
+        f"Review https://huggingface.co/{resolved.repo_id}/tree/{resolved.revision}, then run: "
+        f"ollajev pull {name} --trust"
+    )
+
+
+def _claim(repo_id: str) -> bool:
+    """Mark `repo_id` as being pulled; False when another pull of it is running."""
+    with _pulling_guard:
+        if repo_id in _pulling:
+            return False
+        _pulling.add(repo_id)
+        return True
+
+
+def _release(repo_id: str) -> None:
+    with _pulling_guard:
+        _pulling.discard(repo_id)
+
+
+def _download_with_events(resolved: store.Resolved, events: queue.Queue[dict[str, Any] | None]) -> None:
+    status = f"downloading {resolved.repo_id}@{resolved.revision[:12]}"
+    events.put({"status": status, "digest": resolved.revision})
+    report_bytes(resolved, status, events)
+    prefetch = getattr(resolved.family, "prefetch", None)
+    if prefetch:
+        events.put({"status": "downloading base model"})
+        prefetch(store.local_path(resolved))
+    events.put({"status": "success", "model": canonical(resolved)})
+
+
+def _pull(model: str, events: queue.Queue[dict[str, Any] | None]) -> None:
+    """Resolve and download `model`, putting status and error events on `events`, then None when done."""
+    try:
+        events.put({"status": "pulling manifest"})
+        resolved = store.resolve(lookup(model))
+        if resolved.family.runs_repo_code and not store.is_trusted(resolved):
+            events.put({"error": _untrusted_message(resolved)})
+            return
+        if not _claim(resolved.repo_id):
+            events.put({"error": f"{resolved.repo_id} is already being pulled"})
+            return
+        try:
+            _download_with_events(resolved, events)
+        finally:
+            _release(resolved.repo_id)
+    except (LookupError, ValueError) as exc:  # bad name or unknown model: safe to show
+        events.put({"error": str(exc)})
+    except Exception:
+        log.exception("pull of %s failed", model)
+        events.put({"error": "pull failed; see the server log"})
+    finally:
+        events.put(None)
+
+
 @router.post("/pull")
 def api_pull(req: PullRequest) -> Any:
     """Download a model; with stream=true, NDJSON status lines like Ollama's pull."""
     events: queue.Queue[dict[str, Any] | None] = queue.Queue()
-
-    def work() -> None:
-        key = None
-        try:
-            events.put({"status": "pulling manifest"})
-            resolved = store.resolve(lookup(req.model))
-            if resolved.family.runs_repo_code and not store.is_trusted(resolved):
-                events.put(
-                    {
-                        "error": f"{canonical(resolved)} runs Python code from its repo; trust is not available over HTTP. "
-                        f"Review https://huggingface.co/{resolved.repo_id}/tree/{resolved.revision}, then run: "
-                        f"ollajev pull {canonical(resolved)} --trust"
-                    }
-                )
-                return
-            key = resolved.repo_id
-            with _pulling_guard:
-                busy = key in _pulling
-                _pulling.add(key)
-            if busy:
-                key = None
-                events.put({"error": f"{resolved.repo_id} is already being pulled"})
-                return
-            status = f"downloading {resolved.repo_id}@{resolved.revision[:12]}"
-            events.put({"status": status, "digest": resolved.revision})
-            report_bytes(resolved, status, events)
-            prefetch = getattr(resolved.family, "prefetch", None)
-            if prefetch:
-                events.put({"status": "downloading base model"})
-                prefetch(store.local_path(resolved))
-            events.put({"status": "success", "model": canonical(resolved)})
-        except (LookupError, ValueError) as exc:  # bad name or unknown model: safe to show
-            events.put({"error": str(exc)})
-        except Exception:
-            log.exception("pull of %s failed", req.model)
-            events.put({"error": "pull failed; see the server log"})
-        finally:
-            if key:
-                with _pulling_guard:
-                    _pulling.discard(key)
-            events.put(None)
-
-    threading.Thread(target=work, daemon=True).start()
+    threading.Thread(target=_pull, args=(req.model, events), daemon=True).start()
 
     def lines():
         while (event := events.get()) is not None:
