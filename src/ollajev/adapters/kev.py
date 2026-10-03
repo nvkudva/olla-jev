@@ -6,6 +6,7 @@ The base model is fetched at the revision head.pt names.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from .base import Loaded
@@ -53,6 +54,7 @@ class _Kev:
         attention = "sdpa" if device == "mps" else None
         opts = LoadOptions(dtype=dtype, attn=attention)
         ck = Checkpoint(path)
+        _use_cached_base(ck.meta)
         tok, model = ck.load(device, opts)
 
         def predict(state: Any, questions: dict[str, dict[str, Any]]) -> dict[str, Any]:
@@ -66,6 +68,21 @@ class _Kev:
             }
 
         return Loaded(resolved.name, f"Kev pointer head on {ck.meta.base}", None, self.limits(resolved), predict)
+
+
+def _use_cached_base(meta: Any) -> None:
+    """Point the checkpoint at the base model's downloaded folder instead of its repo name. By name, each
+    from_pretrained call (tokenizer, config, weights) first asks Hugging Face for the latest files: kev-0.5b took
+    20-30 s to load that way and 2.6 s from the folder. A base that is not downloaded keeps its name and downloads."""
+    # Not snapshot_download(local_files_only=True): it refuses a snapshot missing README.md and the like, which
+    # prefetch skips on purpose.
+    from huggingface_hub import try_to_load_from_cache
+
+    config_file = try_to_load_from_cache(meta.base, "config.json", revision=meta.base_revision)
+    if not isinstance(config_file, str):
+        return
+    meta.base = os.path.dirname(config_file)
+    meta.base_revision = None
 
 
 FAMILY = _Kev()
