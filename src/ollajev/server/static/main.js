@@ -452,7 +452,7 @@ function stateRowMarkup(turn) {
 function turnMarkup(turn, index) {
   const body = turn.error ? errorMarkup(turn.error)
     : turn.data ? answersMarkup(turn.request.questions, turn.data)
-    : html`<div class="turn-pending">thinking…</div>`;
+    : html`<div class="turn-pending">${turn.loading ? `loading ${turn.request.model} into memory…` : "thinking…"}<div class="progress" role="progressbar" aria-label="${turn.loading ? "Loading model" : "Running"}"></div></div>`;
   return html`<div class="turn">${turnHeadMarkup(turn, index)}${stateRowMarkup(turn)}${body}</div>`;
 }
 
@@ -481,7 +481,8 @@ function renderLog() {
 async function ask(request) {
   log.querySelector(".empty")?.remove();
   const at = Date.now();
-  const pending = node(turnMarkup({ request, at, pending: true }, history.length));
+  const loaded = await fetch("/api/ps").then((r) => r.json()).then((b) => b.models.some((m) => m.name === request.model)).catch(() => true);
+  const pending = node(turnMarkup({ request, at, pending: true, loading: !loaded }, history.length));
   log.append(pending);
   applyView(pending, "ui");
   scrollLog();
