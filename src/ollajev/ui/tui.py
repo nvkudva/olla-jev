@@ -564,7 +564,7 @@ class Models(App[bool]):
         )
         limits = ", ".join(f"{k} {v}" for k, v in r.family.limits(r).items()) or "none recorded"
         body = (
-            f"family   {r.family.name}\ncommit   {r.revision}\nfile     {r.gguf or 'safetensors'}\n"
+            f"family   {r.family.name}\ncommit   {r.revision}\nfile     {r.weights or 'safetensors'}\n"
             f"code     {trusted}\nlimits   {limits}\npath     {store.local_path(r)}"
         )
         await self.push_screen_wait(Info(canonical(r), body))

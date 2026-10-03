@@ -32,7 +32,7 @@ def test_the_gguf_repo_runs_on_its_base(tmp_path, monkeypatch):
     }
     monkeypatch.setattr(store, "_remote_files", lambda repo, rev: (repos[repo][0], None, *repos[repo][1:]))
     r = store.resolve("alibiserikbay/JevK5-GGUF:jevk5-2b-v0.2-Q8_0.gguf")
-    assert (r.family.name, r.gguf, r.allow) == ("jevk5", "jevk5-2b-v0.2-Q8_0.gguf", ["jevk5-2b-v0.2-Q8_0.gguf"])
+    assert (r.family.name, r.weights, r.allow) == ("jevk5", "jevk5-2b-v0.2-Q8_0.gguf", ["jevk5-2b-v0.2-Q8_0.gguf"])
     assert r.base is not None and r.base.repo_id == "alibiserikbay/JevK5" and r.base.allow == ["jevk5_config.json"]
 
 

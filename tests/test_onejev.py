@@ -75,5 +75,5 @@ def test_gguf_copies_run_on_the_base_tokenizer(tmp_path, monkeypatch):
         store, "_remote_files", lambda repo, rev: (repos[repo][0], None, repos[repo][1], bases.get(repo, []))
     )
     r = store.resolve("mradermacher/OneJev-0.8B-GGUF:Q8_0")
-    assert (r.family.name, r.gguf) == ("onejev", "OneJev-0.8B.Q8_0.gguf")
+    assert (r.family.name, r.weights) == ("onejev", "OneJev-0.8B.Q8_0.gguf")
     assert r.base is not None and r.base.repo_id == "OmniJev/OneJev-0.8B" and r.base.allow == onejev.META

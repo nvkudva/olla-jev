@@ -1,7 +1,8 @@
-"""Model names, Ollama style: `<user>/<repo>`, `<user>/<repo>:<quant>` or `<user>/<repo>:<file.gguf>`.
+"""Model names, Ollama style: `<user>/<repo>`, `<user>/<repo>:<quant>` or `<user>/<repo>:<file>`.
 
 An `hf.co/` or `huggingface.co/` prefix is accepted, so names copied from an Ollama command work,
 and so are browser URLs of a repo or one of its files (`.../tree/main`, `.../blob/main/x.gguf`).
+A repo's weight files are its variants: GGUF quants, or ONNX exports named by precision (`fp16`, `int8`).
 The quant is matched case-insensitively against the repo's file names.
 """
 
@@ -20,6 +21,9 @@ PREFIXES = (
 )
 # Ollama's order when a repo has no Q4_K_M: the first quant found, best compromise first.
 QUANT_PREFERENCE = ["Q4_K_M", "Q4_K_S", "Q4_0", "IQ4_XS", "Q5_K_M", "Q5_K_S", "Q6_K", "Q8_0"]
+# An ONNX repo's main export (no precision in its name) first, then full precision.
+PRECISION_PREFERENCE = [None, "fp32"]
+FORMATS = (".gguf", ".onnx")
 _REPO = re.compile(r"^[\w.-]+/[\w.-]+$")
 _URL_PATH = re.compile(r"^([^/]+/[^/]+)/(?:blob|resolve|tree)/[^/]+(?:/(.*))?$")
 
@@ -41,7 +45,7 @@ def parse(name: str) -> Ref:
             text = text[len(prefix) :].split("?", 1)[0].split("#", 1)[0].rstrip("/")
             if m := _URL_PATH.match(text):
                 file = (m.group(2) or "").rsplit("/", 1)[-1]
-                text = f"{m.group(1)}:{file}" if file.lower().endswith(".gguf") else m.group(1)
+                text = f"{m.group(1)}:{file}" if file.lower().endswith(FORMATS) else m.group(1)
             break
     repo_id, _, tag = text.partition(":")
     if not _REPO.match(repo_id) or ".." in repo_id or any(part.strip(".") == "" for part in repo_id.split("/")):
@@ -55,28 +59,73 @@ def quant_of(filename: str) -> str | None:
     return m.group(1).upper() if m else None
 
 
-def ggufs(files: list[str]) -> list[str]:
-    """The model weight files among `files`: `.gguf` files except vision projectors (`mmproj`), which no family
-    loads as a model."""
-    return [f for f in files if f.lower().endswith(".gguf") and "mmproj" not in f.rsplit("/", 1)[-1].lower()]
+def precision_of(filename: str) -> str | None:
+    """`model_fp16.onnx`, `model-int8.onnx` or `laya.int8.onnx` -> `fp16` / `int8`; None for `model.onnx`."""
+    m = re.search(r"[._-](fp16|fp32|bf16|int8|uint8|int4|q4|q4f16|q8|bnb4|quantized)\.onnx$", filename, re.IGNORECASE)
+    return m.group(1).lower() if m else None
 
 
-def pick_gguf(files: list[str], tag: str | None) -> str:
-    """The one .gguf file `tag` names in a repo's file list, or the default quant when tag is None."""
-    weights = ggufs(files)
-    if not weights:
-        raise ValueError("repo has no .gguf files")
+def tag_of(filename: str) -> str | None:
+    """The quant or precision a weight file is named by, or None when its name says neither."""
+    return quant_of(filename) or precision_of(filename)
+
+
+def label_of(filename: str) -> str:
+    """What names a weight file in `<repo>:<tag>`: its quant or precision, else its file name."""
+    return tag_of(filename) or filename.rsplit("/", 1)[-1]
+
+
+def format_of(filename: str) -> str | None:
+    """`gguf` or `onnx` for a weight file, else None."""
+    suffix = "." + filename.rsplit(".", 1)[-1].lower()
+    return suffix[1:] if suffix in FORMATS else None
+
+
+def weight_files(files: list[str]) -> list[str]:
+    """A repo's variants, one weight file each: its .gguf files, or its .onnx files when it has no GGUF.
+    Vision projectors (`mmproj`) are not variants: no family loads them as a model."""
+    ggufs = [f for f in files if format_of(f) == "gguf" and "mmproj" not in f.rsplit("/", 1)[-1].lower()]
+    return ggufs or [f for f in files if format_of(f) == "onnx"]
+
+
+def sidecars(weights: str) -> list[str]:
+    """Files that must sit next to a weight file: an ONNX graph's external data (`x.onnx_data`, `x.onnx.data`)."""
+    return [f"{weights}_data", f"{weights}.data"] if format_of(weights) == "onnx" else []
+
+
+def labels(files: list[str]) -> dict[str, str]:
+    """Each weight file's tag in `<repo>:<tag>`: its quant or precision when no other file shares it, else its
+    file name, else its path in the repo."""
+    found = weight_files(files)
+    tags = [tag_of(f) for f in found]
+    bases = [f.rsplit("/", 1)[-1] for f in found]
+    return {
+        f: t if t and tags.count(t) == 1 else b if bases.count(b) == 1 else f
+        for f, t, b in zip(found, tags, bases, strict=True)
+    }
+
+
+def pick_weights(files: list[str], tag: str | None) -> str:
+    """The one weight file `tag` names in a repo's file list, or the default variant when tag is None."""
+    found = sorted(weight_files(files), key=lambda f: f.lower())
+    if not found:
+        raise ValueError("repo has no .gguf or .onnx files")
     if tag is None:
-        by_quant = {quant_of(f): f for f in weights}
-        for q in QUANT_PREFERENCE:
-            if q in by_quant:
-                return by_quant[q]
-        return sorted(weights, key=lambda f: f.lower())[0]
-    if tag.lower().endswith(".gguf"):
-        matches = [f for f in weights if f.rsplit("/", 1)[-1].lower() == tag.lower()]
+        by_tag: dict[str | None, str] = {}
+        for f in found:
+            by_tag.setdefault(tag_of(f), f)
+        preference = QUANT_PREFERENCE if format_of(found[0]) == "gguf" else PRECISION_PREFERENCE
+        for t in preference:
+            if t in by_tag:
+                return by_tag[t]
+        return found[0]
+    if tag.lower().endswith(FORMATS):
+        matches = [f for f in found if f.lower() == tag.lower()] or [
+            f for f in found if f.rsplit("/", 1)[-1].lower() == tag.lower()
+        ]
     else:
-        matches = [f for f in weights if quant_of(f) == tag.upper()]
+        matches = [f for f in found if (tag_of(f) or "").lower() == tag.lower()]
     if len(matches) != 1:
-        available = ", ".join(sorted({quant_of(f) or f for f in weights}))
+        available = ", ".join(sorted(labels(files).values()))
         raise ValueError(f"no single file matches {tag!r}; available: {available}")
     return matches[0]

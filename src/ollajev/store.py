@@ -14,7 +14,7 @@ from huggingface_hub.utils import filter_repo_objects
 
 from . import config, names
 from .adapters import Family, detect
-from .names import Ref, parse, pick_gguf, quant_of
+from .names import Ref, parse
 
 
 @dataclass
@@ -23,7 +23,7 @@ class Resolved:
     family: Family
     revision: str
     files: list[str]
-    gguf: str | None = None  # the one .gguf file this name selects, for GGUF repos
+    weights: str | None = None  # the one .gguf or .onnx file this name selects; None for full weights
     allow: list[str] | None = field(default=None)
     created: str | None = None  # the repo's creation date, recorded as release_date once it is downloaded
     base: Resolved | None = None  # a quantized copy's base repo, which supplies config and tokenizer files
@@ -117,10 +117,10 @@ def _resolve(ref: Ref, revision: str | None, *, online: bool, allow_base: bool) 
     created = None
     base_ids: list[str] = []
     files = _local_files(ref.repo_id, revision) if revision else None
-    gguf = None
+    weights = None
     if files is not None:
         try:
-            gguf = _pick(ref, files)
+            weights = _pick(ref, files)
         except ValueError:
             if not online:
                 raise LookupError(f"{ref.name} is not downloaded; run: ollajev pull {ref.name}") from None
@@ -131,39 +131,60 @@ def _resolve(ref: Ref, revision: str | None, *, online: bool, allow_base: bool) 
         sha, created, files, base_ids = _remote_files(ref.repo_id, revision)
         if revision is None:
             revision = sha  # pinned by download(), once the weights are on disk
-        gguf = _pick(ref, files)
+        weights = _pick(ref, files)
     if revision is None:  # unreachable: set from the pin or from the remote lookup above
         raise LookupError(f"no revision for {ref.name}")
     try:
         family = detect(ref.repo_id, files)
     except LookupError:
-        base = _base(ref.repo_id, gguf, base_ids, online=online) if allow_base else None
-        if base is None:
+        base = _base(ref.repo_id, weights, files, base_ids, online=online) if allow_base else None
+        if base is None or weights is None:
             raise
-        return Resolved(
-            ref, base.family, revision, files, gguf, allow=[gguf] if gguf else None, created=created, base=base
-        )
-    resolved = Resolved(ref, family, revision, files, gguf, created=created)
+        allow = [weights, *names.sidecars(weights)]
+        return Resolved(ref, base.family, revision, files, weights, allow=allow, created=created, base=base)
+    if weights and not _runs(family, weights, files):
+        if ref.tag:
+            raise ValueError(f"the {family.name} family cannot run {weights}")
+        weights = None  # e.g. an ONNX export next to the weights the family loads
+    resolved = Resolved(ref, family, revision, files, weights, created=created)
     resolved.allow = family.allow_patterns(resolved)
     return resolved
 
 
-def _base(repo_id: str, gguf: str | None, base_ids: list[str], *, online: bool) -> Resolved | None:
-    """The base repo of a GGUF quantization that no family recognises by itself, when the base's family can run
-    the copy's GGUF with the base's config files. Offline it uses the base recorded at download time."""
-    if gguf is None:
+def _runs(family: Family, weights: str, files: list[str]) -> bool:
+    """Whether `family` loads this one weight file (a GGUF quant, an ONNX graph) of a repo with `files`."""
+    runs = getattr(family, "runs_weights", None)
+    return bool(runs and runs(weights, files))
+
+
+def _inherits(family: Family) -> bool:
+    """Whether quantized copies of this family's repos can run with the base repo's config files."""
+    return bool(getattr(family, "base_files", None)) and not family.runs_repo_code
+
+
+def _base(repo_id: str, weights: str | None, files: list[str], base_ids: list[str], *, online: bool) -> Resolved | None:
+    """The base repo of a quantization that no family recognises by itself, when the base's family can run the
+    copy's weight file with the base's config files. Offline it uses the base recorded at download time. A base
+    whose family declines the file's layout makes this a LookupError that says so."""
+    if weights is None:
         return None
     recorded = bases().get(repo_id)
     candidates = [(recorded["repo"], recorded["revision"])] if recorded else [(b, None) for b in base_ids]
+    declined = None
     for base_id, revision in candidates:
         try:
             base = _resolve(Ref(base_id), revision, online=online, allow_base=False)
         except (LookupError, ValueError):
             continue
-        meta = getattr(base.family, "base_files", None)
-        if meta and not base.family.runs_repo_code:
-            base.allow = meta
-            return base
+        if not _inherits(base.family):
+            continue
+        if not _runs(base.family, weights, files):
+            declined = base.family.name
+            continue
+        base.allow = base.family.base_files  # type: ignore[attr-defined]
+        return base
+    if declined:
+        raise LookupError(f"{repo_id}: the {declined} family does not run {weights} (unsupported file or layout)")
     return None
 
 
@@ -178,7 +199,8 @@ class Hit:
 
 @dataclass(frozen=True)
 class Variant:
-    """One downloadable form of a repo: a GGUF quant, or the full weights. size is the download in bytes."""
+    """One downloadable form of a repo: a GGUF quant, an ONNX export, or the full weights. size is the download in
+    bytes."""
 
     name: str  # what `pull` takes
     label: str
@@ -191,11 +213,10 @@ def _family(repo_id: str, files: list[str], base_models: dict | None = None) -> 
         return detect(repo_id, files)
     except LookupError:
         pass
-    if not names.ggufs(files):
-        return None
-    for base_id in _quantized_from(base_models):
+    weights = names.weight_files(files)
+    for base_id in _quantized_from(base_models) if weights else []:
         family = _family(base_id, list(_repo_files(base_id)))
-        if family and getattr(family, "base_files", None) and not family.runs_repo_code:
+        if family and _inherits(family) and any(_runs(family, w, files) for w in weights):
             return family
     return None
 
@@ -236,7 +257,7 @@ def search(query: str, limit: int = 40) -> list[Hit]:
 
 
 def variants(repo_id: str) -> list[Variant]:
-    """A repo's GGUF quants, or its full weights, with download sizes, smallest first."""
+    """A repo's GGUF quants or ONNX exports, or its full weights, with download sizes, smallest first."""
     api = HfApi()
     info = api.model_info(repo_id, files_metadata=True)
     sizes = {s.rfilename: s.size or 0 for s in info.siblings or []}
@@ -255,24 +276,22 @@ def _variants(
 ) -> list[Variant]:
     """copy: the weights come from this repo and the config files from its base, so only the weights count."""
     files = list(sizes)
-    ggufs = names.ggufs(files)
-    quants = [quant_of(f) for f in ggufs]
-    tags = [q if q and quants.count(q) == 1 else f.rsplit("/", 1)[-1] for f, q in zip(ggufs, quants, strict=True)]
+    tags = {w: t for w, t in names.labels(files).items() if family is None or _runs(family, w, files)}
     found = []
-    for tag, gguf in zip(tags, ggufs, strict=True) if ggufs else [(None, None)]:
+    for weights, tag in tags.items() if tags else [(None, None)]:
         ref = Ref(repo_id, tag)
         if family and not copy:
-            allow = family.allow_patterns(Resolved(ref, family, sha, files, gguf))
-            size = sum(sizes[f] for f in filter_repo_objects(files, allow_patterns=allow))
+            allow = family.allow_patterns(Resolved(ref, family, sha, files, weights))
         else:
-            size = sizes[gguf] if gguf else sum(sizes.values())
+            allow = [weights, *names.sidecars(weights)] if weights else None
+        size = sum(sizes[f] for f in filter_repo_objects(files, allow_patterns=allow))
         found.append(Variant(ref.name, tag or "full weights", size))
     return sorted(found, key=lambda v: v.size)
 
 
 def _pick(ref: Ref, files: list[str]) -> str | None:
-    if names.ggufs(files):
-        return pick_gguf(files, ref.tag)
+    if names.weight_files(files):
+        return names.pick_weights(files, ref.tag)
     if ref.tag:
         raise ValueError(f"{ref.repo_id} has no quantized files; drop ':{ref.tag}'")
     return None
@@ -317,31 +336,35 @@ def downloaded() -> dict[str, tuple[int, float]]:
 
 
 def delete_file(r: Resolved) -> int:
-    """Remove one weight file of a downloaded repo. Its blob goes only when no other snapshot links to it."""
+    """Remove one weight file of a downloaded repo, with its ONNX external data. A blob goes only when no other
+    snapshot links to it."""
     rev = snapshot(r.repo_id, r.revision)
-    if rev is None or r.gguf is None:
+    if rev is None or r.weights is None:
         return 0
-    link = rev.snapshot_path / r.gguf
-    blob = link.resolve()
-    shared = any(
-        other != link and other.resolve() == blob
-        for other in rev.snapshot_path.parent.glob("*/**/*")
-        if other.is_symlink()
-    )
-    link.unlink()
-    if shared:
-        return 0
-    freed = blob.stat().st_size
-    blob.unlink()
+    freed = 0
+    for name in [r.weights, *names.sidecars(r.weights)]:
+        link = rev.snapshot_path / name
+        if not link.is_symlink():
+            continue
+        blob = link.resolve()
+        shared = any(
+            other != link and other.resolve() == blob
+            for other in rev.snapshot_path.parent.glob("*/**/*")
+            if other.is_symlink()
+        )
+        link.unlink()
+        if not shared:
+            freed += blob.stat().st_size
+            blob.unlink()
     return freed
 
 
 def remove(r: Resolved) -> int:
-    """Delete what `r` names: one quant when the repo has others on disk, else the whole repo. Bytes freed."""
+    """Delete what `r` names: one variant when the repo has others on disk, else the whole repo. Bytes freed."""
     path = local_path(r)
-    if r.gguf and path:
-        name = r.gguf.rsplit("/", 1)[-1]
-        if any(p.name != name for p in Path(path).glob("**/*.gguf")):
+    if r.weights and path:
+        on_disk = names.weight_files([str(p.relative_to(path)) for p in Path(path).glob("**/*")])
+        if any(f != r.weights for f in on_disk):
             return delete_file(r)
     return delete(r.repo_id)
 

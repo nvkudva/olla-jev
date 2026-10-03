@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from .. import names
 from .base import Loaded
 
 LIMITS = {"max_options": 255, "max_levels": 10, "max_tokens": 32768}
@@ -28,8 +29,11 @@ class _Decider:
     def matches(self, repo_id: str, files: list[str]) -> bool:
         return "decider_config.json" in files
 
+    def runs_weights(self, weights: str, files: list[str]) -> bool:
+        return names.format_of(weights) == "gguf"
+
     def allow_patterns(self, r) -> list[str]:
-        return [r.gguf, *META] if r.gguf else ["*.safetensors", *META]
+        return [r.weights, *META] if r.weights else ["*.safetensors", *META]
 
     def load(self, path: str, r, device: str | None) -> Loaded:
         from decider.infer import Decider
@@ -38,10 +42,10 @@ class _Decider:
             from .. import store
 
             # The base folder supplies decider_config.json and the tokenizer; gguf_file is an absolute path.
-            d = Decider(store.local_path(r.base), gguf_file=os.path.join(path, r.gguf))
+            d = Decider(store.local_path(r.base), gguf_file=os.path.join(path, r.weights))
             backend = "llama.cpp"
-        elif r.gguf:
-            d = Decider(path, gguf_file=r.gguf)
+        elif r.weights:
+            d = Decider(path, gguf_file=r.weights)
             backend = "llama.cpp"
         else:
             d = Decider(path, device=device)
@@ -56,7 +60,7 @@ class _Decider:
             None,
             self.limits(r),
             predict,
-            device="llama.cpp" if r.gguf else device,
+            device="llama.cpp" if r.weights else device,
         )
 
 

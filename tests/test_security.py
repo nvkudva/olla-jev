@@ -40,7 +40,7 @@ def client(home, monkeypatch):
 def fake_resolved(runs_code: bool = True):
     family = SimpleNamespace(name="julia", runs_repo_code=runs_code)
     return SimpleNamespace(
-        repo_id="user/repo", revision="a" * 40, family=family, gguf=None, ref=SimpleNamespace(name="user/repo")
+        repo_id="user/repo", revision="a" * 40, family=family, weights=None, ref=SimpleNamespace(name="user/repo")
     )
 
 
@@ -206,7 +206,7 @@ def delete_with(monkeypatch, root, rev):
     snap = root / "snapshots" / rev
     fake = SimpleNamespace(snapshot_path=snap)
     monkeypatch.setattr(store, "snapshot", lambda repo_id, revision: fake)
-    return store.delete_file(SimpleNamespace(repo_id="u/r", revision=rev, gguf="m-Q4_K_M.gguf"))
+    return store.delete_file(SimpleNamespace(repo_id="u/r", revision=rev, weights="m-Q4_K_M.gguf"))
 
 
 def test_delete_file_keeps_a_blob_another_revision_uses(tmp_path, monkeypatch):

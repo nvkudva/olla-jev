@@ -15,10 +15,9 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from .. import config, store
+from .. import config, names, store
 from ..catalog import CATALOG
 from ..manager import canonical, lookup
-from ..names import quant_of
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
@@ -53,15 +52,16 @@ def _describe(name: str, r: store.Resolved, size: int, modified: float) -> dict[
         "release_date": store.released(r.repo_id) or datetime.fromtimestamp(modified, UTC).date().isoformat(),
         "details": {
             "family": r.family.name,
-            "format": "gguf" if r.gguf else "safetensors",
-            "quantization_level": quant_of(r.gguf) if r.gguf else None,
+            "format": names.format_of(r.weights) if r.weights else "safetensors",
+            "quantization_level": names.tag_of(r.weights) if r.weights else None,
         },
         "limits": r.family.limits(r),
     }
 
 
 def tags() -> list[dict[str, Any]]:
-    """One entry per downloaded weight file: a GGUF repo with two quants on disk is two models."""
+    """One entry per downloaded weight file: a GGUF repo with two quants on disk is two models, and so is an ONNX
+    repo with two exports."""
     out = []
     for repo_id, (size, modified) in sorted(store.downloaded().items()):
         revision = store.pins()[repo_id]
@@ -69,14 +69,18 @@ def tags() -> list[dict[str, Any]]:
         if rev is None:
             continue
         snap = Path(rev.snapshot_path)
-        ggufs = sorted(p.name for p in snap.glob("**/*.gguf"))
-        names = [f"{repo_id}:{quant_of(g) or g}" for g in ggufs] or [repo_id]
-        for name in names:
+        local = names.labels(sorted(str(p.relative_to(snap)) for p in snap.glob("**/*")))
+        for name in [f"{repo_id}:{tag}" for tag in local.values()] or [repo_id]:
             try:
                 r = store.resolve(name, online=False)
             except (LookupError, ValueError):
                 continue
-            weight = (snap / r.gguf).stat().st_size if r.gguf else size
+            if r.weights:
+                weight = sum(
+                    (snap / f).stat().st_size for f in [r.weights, *names.sidecars(r.weights)] if (snap / f).is_file()
+                )
+            else:
+                weight = size
             out.append(_describe(canonical(r), r, weight, modified))
     return out
 
@@ -120,7 +124,7 @@ def api_show(req: ModelRef) -> Any:
         "model": canonical(r),
         "repo": r.repo_id,
         "revision": r.revision,
-        "file": r.gguf,
+        "file": r.weights,
         "family": r.family.name,
         "runs_repo_code": r.family.runs_repo_code,
         "trusted": store.is_trusted(r),

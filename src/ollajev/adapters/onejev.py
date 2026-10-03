@@ -16,6 +16,7 @@ import os
 import re
 from typing import Any
 
+from .. import names
 from .base import Loaded
 
 LIMITS = {"max_options": 255, "max_levels": 10, "max_tokens": 32768}
@@ -253,6 +254,9 @@ class _OneJev:
     # tokenizer and chat template come from these files of the base repo.
     base_files = META
 
+    def runs_weights(self, weights: str, files: list[str]) -> bool:
+        return names.format_of(weights) == "gguf"
+
     def limits(self, r) -> dict:
         return LIMITS
 
@@ -262,16 +266,16 @@ class _OneJev:
         return bool(REPO.fullmatch(repo_id)) and weights and "tokenizer.json" in files
 
     def allow_patterns(self, r) -> list[str]:
-        return [r.gguf, *META] if r.gguf else ["*.safetensors", *META]
+        return [r.weights, *META] if r.weights else ["*.safetensors", *META]
 
     def load(self, path: str, r, device: str | None) -> Loaded:
-        if r.base or r.gguf:
+        if r.base or r.weights:
             from .. import store
 
             tokenizer_dir = store.local_path(r.base) if r.base else path
             if tokenizer_dir is None:
                 raise LookupError(f"the base files of {r.name} are not downloaded")
-            predict, close = _gguf_engine(os.path.join(path, r.gguf), tokenizer_dir)
+            predict, close = _gguf_engine(os.path.join(path, r.weights), tokenizer_dir)
             backend, device = "llama.cpp", "llama.cpp"
         else:
             device = device or "cpu"

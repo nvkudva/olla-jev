@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from .._vendor.jevk5 import prompt
+from .. import names
 from . import instructions_or_name
 from .base import Loaded
 
@@ -206,6 +207,9 @@ class _JevK5:
     # A GGUF copy (alibiserikbay/JevK5-GGUF) brings its own tokenizer; the base adds only the temperatures.
     base_files = BASE_FILES
 
+    def runs_weights(self, weights: str, files: list[str]) -> bool:
+        return names.format_of(weights) == "gguf"
+
     def limits(self, r) -> dict:
         return LIMITS
 
@@ -214,23 +218,23 @@ class _JevK5:
         return CONFIG in files and weights
 
     def allow_patterns(self, r) -> list[str]:
-        if r.gguf:
-            return [r.gguf, CONFIG]
+        if r.weights:
+            return [r.weights, CONFIG]
         return ["*.safetensors", "*.json", "*.jinja"]
 
     def load(self, path: str, r, device: str | None) -> Loaded:
-        if r.gguf:
+        if r.weights:
             from .. import store
 
             config_dir = (store.local_path(r.base) if r.base else None) or path
-            engine: Any = _Llama(os.path.join(path, r.gguf))
+            engine: Any = _Llama(os.path.join(path, r.weights))
             backend, device = "llama.cpp", "llama.cpp"
         else:
             config_dir = path
             device = device or "cpu"
             engine = _Torch(path, device)
             backend = f"PyTorch {device}"
-        temperature, knockout = temperatures(config_dir, r.gguf)
+        temperature, knockout = temperatures(config_dir, r.weights)
 
         def predict(state: Any, questions: dict[str, dict[str, Any]]) -> dict[str, Any]:
             return system_one(engine.encode, engine.letter_logits, temperature, knockout, state, questions)
