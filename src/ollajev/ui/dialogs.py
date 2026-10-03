@@ -14,7 +14,7 @@ from textual.containers import Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import DataTable, Input, Select, Static, TextArea
 
-from .. import config, store
+from .. import client, config, store
 from . import repl
 
 log = logging.getLogger(__name__)
@@ -235,7 +235,7 @@ class Ask(ModalScreen[None]):
             yield Static("ctrl+s ask · esc close", classes="hint")
 
     def on_mount(self) -> None:
-        self.show("Loading the model…")
+        self.show(f"Loading {self.model} …")
         self.connect()
 
     def show(self, text: str) -> None:
@@ -245,6 +245,8 @@ class Ask(ModalScreen[None]):
 
     @work(thread=True)
     def connect(self) -> None:
+        where = "on the server" if client.server_running() else "into this process (no server running)"
+        self.app.call_from_thread(self.show, f"Loading {self.model} {where} …")
         try:
             self.ask = self.app.connection(self.model)  # type: ignore[attr-defined]
             self.app.call_from_thread(self.show, "Ready. Press ctrl+s to ask.")
