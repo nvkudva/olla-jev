@@ -390,3 +390,16 @@ def test_server_timing_separates_a_model_load_from_the_answer(client, stub):
     stub.loaded_at = time.time() + 60  # loaded during this request
     just_loaded = ask(client, {"n": {"type": "noul"}}).headers["server-timing"]
     assert just_loaded.startswith("load;dur=") and ", run;dur=" in just_loaded
+
+
+def test_ipv6_is_skipped_when_it_does_not_connect(monkeypatch):
+    import socket
+
+    def no_route(*args, **kwargs):
+        raise OSError("no route to host")
+
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: [(socket.AF_INET6, 1, 6, "", ("::1", 443, 0, 0))])
+    monkeypatch.setattr(socket, "create_connection", no_route)
+    assert store._ipv6_reaches("huggingface.co") is False
+    monkeypatch.setattr(socket, "getaddrinfo", no_route)  # no IPv6 address at all: nothing tries IPv6
+    assert store._ipv6_reaches("huggingface.co") is True

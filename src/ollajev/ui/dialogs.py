@@ -118,21 +118,28 @@ class AddModel(Clickable, ModalScreen[str | None]):
             self.note(f"error: {exc}")
             return
         if not hits:
-            self.show_results(hits, {})
+            self.show_results(hits, {}, set())
             self.note("No models found")
             return
-        # Each repo's quants take a Hugging Face call; show the rows as they arrive, in search order.
-        quants: dict[str, list[store.Variant]] = {}
+        # The search already names every quant; only their download sizes need a call per repo, so the rows show
+        # at once and each repo's sizes fill in as they arrive.
+        quants = {hit.repo_id: store.listed_variants(hit) for hit in hits}
+        sized: set[str] = set()
+        self.show_results(hits, quants, sized)
 
-        async def read(hit: store.Hit) -> None:
-            quants[hit.repo_id] = await asyncio.to_thread(variants, hit.repo_id)
-            self.show_results(hits, quants)
-            self.note(f"Reading quants: {len(quants)}/{len(hits)} models")
+        async def read_sizes(hit: store.Hit) -> None:
+            found = await asyncio.to_thread(variants, hit.repo_id)
+            if found:
+                quants[hit.repo_id] = found
+            sized.add(hit.repo_id)
+            self.show_results(hits, quants, sized)
+            self.note(f"Reading sizes: {len(sized)}/{len(hits)} models")
 
-        await asyncio.gather(*(read(hit) for hit in hits))
+        self.note(f"Reading sizes: 0/{len(hits)} models")
+        await asyncio.gather(*(read_sizes(hit) for hit in hits))
         self.note("")
 
-    def show_results(self, hits: list[store.Hit], quants: dict[str, list[store.Variant]]) -> None:
+    def show_results(self, hits: list[store.Hit], quants: dict[str, list[store.Variant]], sized: set[str]) -> None:
         table = self.query_one("#results", DataTable)
         cursor = table.cursor_row  # rows keep arriving while the user moves through them
         table.clear()
@@ -141,7 +148,8 @@ class AddModel(Clickable, ModalScreen[str | None]):
             support = f"✓ {hit.family}" if hit.family else "✗ unsupported"
             downloads = human(hit.downloads, ("", "k", "M", "B")).replace(" ", "")
             for variant in quants.get(hit.repo_id, []):
-                table.add_row(variant.name, human(variant.size), downloads, support, key=variant.name)
+                size = human(variant.size) if hit.repo_id in sized else "…"
+                table.add_row(variant.name, size, downloads, support, key=variant.name)
                 if hit.family:
                     self.supported.add(variant.name)
         if table.row_count:

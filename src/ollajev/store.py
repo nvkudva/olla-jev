@@ -3,22 +3,60 @@
 from __future__ import annotations
 
 import functools
+import socket
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
 
-from huggingface_hub import CachedRevisionInfo, HfApi, HFCacheInfo, snapshot_download
+import httpx
+from huggingface_hub import CachedRevisionInfo, HfApi, HFCacheInfo, set_client_factory, snapshot_download
 from huggingface_hub import scan_cache_dir as _scan_cache_dir
+from huggingface_hub.constants import ENDPOINT as HF_ENDPOINT
 from huggingface_hub.constants import HF_HUB_CACHE
 from huggingface_hub.errors import CacheNotFound, LocalEntryNotFoundError, RepositoryNotFoundError
 from huggingface_hub.file_download import repo_folder_name
 from huggingface_hub.utils import filter_repo_objects
 from huggingface_hub.utils import tqdm as hf_tqdm
+from huggingface_hub.utils._http import default_client_factory  # the Hub's stock client, to adjust
 
 from . import config, names
-from .adapters import Family, detect
+from .adapters import Family, detect, families
 from .names import Ref, parse
+
+IPV6_PROBE_SECONDS = 1.5
+
+
+def _ipv6_reaches(host: str) -> bool:
+    """Whether a TCP connection to `host` over IPv6 opens. True when the host has no IPv6 address, since then
+    nothing tries IPv6."""
+    try:
+        addresses = socket.getaddrinfo(host, 443, socket.AF_INET6, socket.SOCK_STREAM)
+    except OSError:
+        return True
+    try:
+        with socket.create_connection(addresses[0][4][:2], timeout=IPV6_PROBE_SECONDS):
+            return True
+    except OSError:
+        return False
+
+
+def _hub_client() -> httpx.Client:
+    """Hugging Face's own HTTP client, made to use IPv4 when IPv6 to the Hub does not connect. httpx tries IPv6
+    first and waits 7-15 s for it to fail on every new connection, where browsers and curl race both; on such a
+    network every search, lookup and download started that much later. Checked once, on the first request."""
+    client = default_client_factory()
+    if _ipv6_reaches(urlparse(HF_ENDPOINT).hostname or "huggingface.co"):
+        return client
+    hooks = client.event_hooks
+    client.close()
+    transport = httpx.HTTPTransport(local_address="0.0.0.0")  # noqa: S104 a client-side bind, which only picks IPv4
+    return httpx.Client(event_hooks=hooks, follow_redirects=True, timeout=None, transport=transport)  # noqa: S113 the stock client has no timeout either: a download can take hours
+
+
+set_client_factory(_hub_client)
 
 
 @dataclass
@@ -200,6 +238,8 @@ class Hit:
     repo_id: str
     downloads: int
     family: str | None
+    files: tuple[str, ...] = ()  # the repo's file names, from the search itself
+    copy: bool = False  # a quantized copy that runs on its base repo's family
 
 
 @dataclass(frozen=True)
@@ -212,15 +252,16 @@ class Variant:
     size: int
 
 
-def _family(repo_id: str, files: list[str], base_models: dict | None = None) -> Family | None:
-    """The family that runs a repo, through its quantized base when no family recognises the repo itself."""
+def _family(repo_id: str, files: list[str], base_models: dict | None = None, files_of: Any = None) -> Family | None:
+    """The family that runs a repo, through its quantized base when no family recognises the repo itself.
+    files_of(repo_id) gives a base repo's file names; by default one Hugging Face call, cached."""
     try:
         return detect(repo_id, files)
     except LookupError:
         pass
     weights = names.weight_files(files)
     for base_id in _quantized_from(base_models) if weights else []:
-        family = _family(base_id, list(_repo_files(base_id)))
+        family = _family(base_id, list((files_of or _repo_files)(base_id)))
         if family and _inherits(family) and any(_runs(family, w, files) for w in weights):
             return family
     return None
@@ -228,9 +269,11 @@ def _family(repo_id: str, files: list[str], base_models: dict | None = None) -> 
 
 @functools.lru_cache(maxsize=256)
 def _repo_files(repo_id: str) -> tuple[str, ...]:
+    """A repo's file names, or none when Hugging Face does not answer within 10 s: a slow lookup of a base repo
+    must not hold up a search, and its copies then just show as unsupported."""
     try:
-        info = HfApi().model_info(repo_id, expand=["siblings"])
-    except RepositoryNotFoundError:
+        info = HfApi().model_info(repo_id, expand=["siblings"], timeout=10)
+    except (RepositoryNotFoundError, httpx.HTTPError):
         return ()
     return tuple(s.rfilename for s in info.siblings or [])
 
@@ -246,31 +289,45 @@ def search(query: str, limit: int = 40) -> list[Hit]:
         words = query.lower().split()
         if not words:
             return []
-        # Listing 200 repos takes 25 s with the default fields and 50 s with `siblings`, but under a second
-        # with `downloads` only, so list ids and read the files of the top 100 matches one by one.
-        listed = [
-            m
-            for m in api.list_models(search=max(words, key=len), sort="downloads", limit=200, expand=["downloads"])
-            if all(w in m.id.lower() for w in words)
-        ][:100]
-        found = None
+        # One listing with the file names and base models in it: under a second for 100 repos, where listing
+        # ids alone took 13 s and then reading each repo's files took another call per repo.
+        found = [
+            model
+            for model in api.list_models(search=max(words, key=len), sort="downloads", limit=100, expand=expand)
+            if all(word in model.id.lower() for word in words)
+        ]
+
+    # A quantized copy is checked through its base repo. The base is usually in the results already; any other
+    # base is fetched once, all of them in parallel, before the copies that need it are checked.
+    files_by_repo = {model.id: tuple(sibling.rfilename for sibling in model.siblings or []) for model in found}
+    missing = {
+        base_id
+        for model in found
+        for base_id in _quantized_from(getattr(model, "base_models", None))
+        if base_id not in files_by_repo
+    }
+    with ThreadPoolExecutor(16) as pool:
+        files_by_repo.update(zip(missing, pool.map(_repo_files, missing), strict=True))
 
     def hit(model) -> Hit:
-        family = _family(model.id, [s.rfilename for s in model.siblings or []], getattr(model, "base_models", None))
-        return Hit(model.id, model.downloads or 0, family.name if family else None)
+        files = list(files_by_repo[model.id])
+        family = _family(model.id, files)
+        copy = False
+        if family is None:
+            family = _family(
+                model.id, files, getattr(model, "base_models", None), lambda base_id: files_by_repo.get(base_id, ())
+            )
+            copy = family is not None
+        return Hit(model.id, model.downloads or 0, family.name if family else None, tuple(files), copy)
 
-    def lookup(model) -> Hit:  # a repo deleted or made private since the listing stays, as unsupported
-        try:
-            return hit(api.model_info(model.id, expand=expand))
-        except RepositoryNotFoundError:
-            return Hit(model.id, model.downloads or 0, None)
-
-    if found is not None:
-        hits = [hit(m) for m in found]
-    else:  # one chain per repo: its files, then (for a quantized copy) its base repo's files
-        with ThreadPoolExecutor(16) as pool:
-            hits = list(pool.map(lookup, listed))
+    hits = [hit(model) for model in found]
     return sorted(hits, key=lambda h: h.family is None)[:limit]  # stable: keeps the download order
+
+
+def listed_variants(hit: Hit) -> list[Variant]:
+    """A search hit's quants from the file names the search returned, with sizes still unknown (0)."""
+    family = next((f for f in families() if f.name == hit.family), None)
+    return _variants(hit.repo_id, "", dict.fromkeys(hit.files, 0), family, copy=hit.copy)
 
 
 def variants(repo_id: str) -> list[Variant]:
