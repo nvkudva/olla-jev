@@ -48,7 +48,7 @@ class Prompt(Clickable, ModalScreen[str | None]):
         with Vertical(classes="dialog") as box:
             box.border_title = self.heading
             yield Input(placeholder=self.placeholder)
-            yield buttons(("OK", "submit", "primary"), ("Cancel", "cancel", "default"))
+            yield buttons(("✓ OK", "submit", "primary"), ("✕ Cancel", "cancel", "default"))
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         self.action_submit()
@@ -86,7 +86,7 @@ class AddModel(Clickable, ModalScreen[str | None]):
             yield Static("", id="note")
             with Horizontal(classes="buttons"):
                 yield Static("type to search · click or enter picks a row", classes="hint")
-                yield Button("Cancel", id="do-cancel", compact=True)
+                yield Button("✕ Cancel", id="do-cancel", compact=True)
 
     def on_mount(self) -> None:
         table = self.query_one("#results", DataTable)
@@ -190,7 +190,7 @@ class Confirm(Clickable, ModalScreen[bool]):
             box.border_title = self.heading
             yield Static(self.body)
             yes_variant = "primary" if self.default else "error"
-            yield buttons(("Yes", "yes", yes_variant), ("No", "no", "default"))
+            yield buttons(("✓ Yes", "yes", yes_variant), ("✕ No", "no", "default"))
 
     def on_mount(self) -> None:
         # The safe answer has the focus, so Enter (or a stray click on nothing) picks it.
@@ -217,7 +217,7 @@ class Info(Clickable, ModalScreen[None]):
         with Vertical(classes="dialog danger" if self.danger else "dialog") as box:
             box.border_title = self.heading
             yield Static(self.body)
-            yield buttons(("Close", "close", "primary"))
+            yield buttons(("✕ Close", "close", "primary"))
 
     def action_close(self) -> None:
         self.dismiss(None)
@@ -254,7 +254,7 @@ class Options(Clickable, ModalScreen[dict[str, Any] | None]):
             yield Input(saved.get("host", "127.0.0.1"), id="host")
             yield Static("Port")
             yield Input(str(saved.get("port", config.DEFAULT_PORT)), id="port", type="integer")
-            yield buttons(("Save", "save", "primary"), ("Cancel", "cancel", "default"))
+            yield buttons(("✓ Save", "save", "primary"), ("✕ Cancel", "cancel", "default"))
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         self.action_save()
@@ -300,7 +300,7 @@ class Ask(Clickable, ModalScreen[None]):
             )
             with VerticalScroll(id="answers-box"):
                 yield Static("", id="answers")
-            yield buttons(("Ask  ctrl+s", "send", "primary"), ("Close", "close", "default"))
+            yield buttons(("▶ Ask", "send", "primary"), ("✕ Close", "close", "default"))
 
     def on_mount(self) -> None:
         self.show(f"Loading {self.model} …")

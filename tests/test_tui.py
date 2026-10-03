@@ -296,7 +296,8 @@ def test_every_row_has_its_buttons(app):
     async def go():
         async with app.run_test(size=(160, 36)):
             table = app.query_one(DataTable)
-            return [table.get_cell(name, "actions").plain.split() for name in app.names[:3]]
+            cells = [table.get_cell(name, "actions").plain for name in app.names[:3]]
+            return [[word for word in cell.split() if word.isalpha()] for cell in cells]
 
     assert asyncio.run(go()) == [["Download"]] * 3
 

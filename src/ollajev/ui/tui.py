@@ -51,8 +51,9 @@ DataTable > .datatable--hover { background: $boost; }
 #status.error { color: $error; text-align: left; }
 #status.busy { color: $text; text-align: left; }
 #keys { height: 1; padding: 0 1; margin-top: 1; background: $panel; }
-#keys Button { width: 14; min-width: 0; padding: 0 1; margin-right: 1; background: $boost; }
-#keys Button:hover { background: $primary 40%; }
+#keys Button { width: 15; min-width: 0; padding: 0 1; margin-right: 1; background: transparent; border: none; }
+#keys Button:hover { color: $accent; background: transparent; }
+#keys Button:focus { background: transparent; text-style: none; }
 
 ModalScreen { align: center middle; background: $background 60%; }
 .dialog {
@@ -64,17 +65,18 @@ ModalScreen { align: center middle; background: $background 60%; }
 .dialog Input, .dialog Select { margin-bottom: 1; }
 .dialog TextArea { height: 6; margin-bottom: 1; }
 .buttons { height: auto; margin-top: 1; align-horizontal: right; }
-.buttons Button { width: 14; min-width: 0; padding: 0 1; margin-left: 1; background: $boost; }
-.buttons Button:hover { background: $primary 40%; }
-.buttons Button.-primary { background: $primary; }
-.buttons Button.-error { background: $error 70%; }
+.buttons Button { width: 13; min-width: 0; padding: 0 1; margin-left: 1; background: transparent; border: none; }
+.buttons Button:hover { color: $accent; background: transparent; }
+.buttons Button:focus { text-style: bold underline; background: transparent; }
+.buttons Button.-primary { color: $accent; text-style: bold; }
+.buttons Button.-error { color: $error; text-style: bold; }
 .buttons .hint { width: 1fr; margin-top: 0; }
 #answers-box { height: auto; max-height: 14; }
 .wide { width: 112; }
 #results { height: 20; }
 """
 
-ROW_BUTTON_WIDTH = 10  # every button in the list is this wide, so they line up in columns
+ROW_BUTTON_WIDTH = 11  # every button in the list is this wide, so they line up in columns
 LANGUAGE_SHORT = {"English": "en", "Multilingual": "multi", "100+ languages": "100+"}
 
 
@@ -113,13 +115,13 @@ class Row(NamedTuple):
 
 # The bar under the list: (key, label, action). Every key works from the keyboard too; ? lists them all.
 KEY_BAR = [
-    ("r", "Ask", "ask"),
-    ("d", "Default", "set_default"),
-    ("i", "Info", "info"),
-    ("n", "Add", "add"),
-    ("/", "Filter", "filter"),
-    ("?", "Help", "help"),
-    ("q", "Quit", "quit_app"),
+    ("r", "✎ Ask", "ask"),
+    ("d", "★ Default", "set_default"),
+    ("i", "≡ Info", "info"),
+    ("n", "+ Add", "add"),
+    ("/", "▽ Filter", "filter"),
+    ("?", "? Help", "help"),
+    ("q", "← Quit", "quit_app"),
 ]
 
 
@@ -286,7 +288,7 @@ class Models(App[bool]):
         keep = self.selected()
         table.clear(columns=True)
         model_width = min(50, max([len(row.label) for row in rows] + [12]))
-        table.add_column("Status", width=17, key="state")
+        table.add_column("Status", width=10, key="state")
         table.add_column("Model", width=model_width, key="model")
         table.add_column(Text("Size", justify="right"), width=8, key="size")
         table.add_column("Lang", width=6, key="lang")
@@ -318,21 +320,20 @@ class Models(App[bool]):
         if not self.busy:
             self.say_idle()
 
-    def pill(self, label: str, role: str) -> Text:
-        """A fixed-width label on a coloured background, e.g. the `default` pill."""
-        return Text(f" {label} ", style=f"bold {self.colour('background')} on {self.colour(role)}")
-
     def state_pills(self, is_default: bool, is_loaded: bool, on_disk: bool) -> Text:
-        """default and loaded as coloured pills; on disk, in grey, for a download that is neither."""
-        pills = Text()
-        if is_default:
-            pills.append(self.pill("default", "warning"))
-            pills.append(" ")
-        if is_loaded:
-            pills.append(self.pill("loaded", "success"))
-        if not pills and on_disk:
-            pills.append(Text(" on disk ", style=f"{self.colour('foreground')} on {self.colour('panel')}"))
-        return pills
+        """★ default and ● loaded in colour; ✓ on disk, dim, for a download that is neither. A loaded default
+        shows as ★● loaded, so the column stays narrow."""
+        labels = Text()
+        if is_default and is_loaded:
+            labels.append("★", style=f"bold {self.colour('warning')}")
+            labels.append("● loaded", style=f"bold {self.colour('success')}")
+        elif is_default:
+            labels.append("★ default", style=f"bold {self.colour('warning')}")
+        elif is_loaded:
+            labels.append("● loaded", style=f"bold {self.colour('success')}")
+        elif on_disk:
+            labels.append("✓ on disk", style="dim")
+        return labels
 
     def show_server(self, server_up: bool) -> None:
         pill = self.query_one("#server-pill", Static)
@@ -342,23 +343,19 @@ class Models(App[bool]):
             pill.update(Text("○ server off", style="dim"))
 
     def row_actions(self, name: str, on_disk: bool, is_loaded: bool) -> Text:
-        """Clickable buttons for one row: Download before it is on disk, then Serve, Stop and Delete."""
-        panel = self.colour("panel")
+        """Clickable buttons for one row: Download before it is on disk, then Serve, Delete and Stop."""
 
         def button(label: str, action: str, colour: str) -> Text:
-            style = f"bold {colour} on {panel}"
-            centred = label.center(ROW_BUTTON_WIDTH)
-            return Text.from_markup(f"[{style}][@click=app.on_row({name!r}, {action!r})]{centred}[/][/]")
+            padded = label.ljust(ROW_BUTTON_WIDTH)
+            return Text.from_markup(f"[bold {colour}][@click=app.on_row({name!r}, {action!r})]{padded}[/][/]")
 
         if not on_disk:
-            return button("Download", "pull", self.colour("accent"))
+            return button("↓ Download", "pull", self.colour("accent"))
         actions = Text()
-        actions.append(button("Serve", "serve_model", self.colour("success")))
-        actions.append(" ")
-        actions.append(button("Delete", "remove", self.colour("error")))
+        actions.append(button("▶ Serve", "serve_model", self.colour("success")))
+        actions.append(button("✕ Delete", "remove", self.colour("error")))
         if is_loaded:  # Stop only means something while the model is in memory
-            actions.append(" ")
-            actions.append(button("Stop", "unload", self.colour("foreground")))
+            actions.append(button("■ Stop", "unload", self.colour("foreground")))
         return actions
 
     async def action_on_row(self, name: str, action: str) -> None:
