@@ -216,3 +216,17 @@ def test_status_line_and_filter(app):
     status, names = asyncio.run(go())
     assert "default " in status and "on disk" in status and "server not running" in status
     assert names and all("julia" in name.lower() for name in names)
+
+
+def test_auto_refresh_picks_up_changes_made_elsewhere(app):
+    from ollajev import config
+
+    async def go():
+        async with app.run_test(size=(160, 36)) as pilot:
+            config.update(default_model="someone/else")
+            app.auto_refresh()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            return str(app.query_one("#status").render())
+
+    assert "default someone/else" in asyncio.run(go())

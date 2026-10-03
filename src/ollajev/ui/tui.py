@@ -99,6 +99,7 @@ class Models(App[bool]):
         self.reload()
         self.say_idle()
         self.load_quants()
+        self.set_interval(3, self.auto_refresh)
 
     @work(group="quants")
     async def load_quants(self) -> None:
@@ -136,11 +137,25 @@ class Models(App[bool]):
                 return set()
         return {self.local[0]} if self.local else set()
 
-    def reload(self) -> None:
+    def snapshot(self) -> tuple[dict[str, Any], str, bool, set[str]]:
+        """What the list shows: downloads, default, server up, loaded models. Slow: disk scan and server probes."""
         have = {m["name"]: m for m in admin.tags()}
         default = canonical_or(default_model())
         server_up = client.server_running()  # each probe can wait 0.5 s, so probe once per reload
-        loaded = self.loaded(server_up)
+        return have, default, server_up, self.loaded(server_up)
+
+    def reload(self) -> None:
+        self.render_list(*self.snapshot())
+
+    @work(thread=True, exclusive=True, group="auto-refresh")
+    def auto_refresh(self) -> None:
+        """Every 3 s: pick up a server, download or default changed elsewhere, off the UI thread."""
+        if self.busy or self.loading or len(self.screen_stack) > 1:
+            return
+        data = self.snapshot()
+        self.call_from_thread(self.render_list, *data)
+
+    def render_list(self, have: dict[str, Any], default: str, server_up: bool, loaded: set[str]) -> None:
         rows = []
         for i, e in enumerate(CATALOG):
             rows.append((e.name, e.name in have, f"{e.size_gb:.1f} GB", e.languages))
