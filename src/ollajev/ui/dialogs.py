@@ -92,23 +92,39 @@ class AddModel(ModalScreen[str | None]):
         self.note("Searching…")
         try:
             hits = await asyncio.to_thread(store.search, query, 25)
-            self.note(f"Reading the quants of {len(hits)} models…")
-            found = await asyncio.gather(*(asyncio.to_thread(variants, h.repo_id) for h in hits))
         except Exception as exc:
             log.exception("search failed")
             self.note(f"error: {exc}")
             return
+        if not hits:
+            self.show_results(hits, {})
+            self.note("No models found")
+            return
+        # Each repo's quants take a Hugging Face call; show the rows as they arrive, in search order.
+        quants: dict[str, list[store.Variant]] = {}
+
+        async def read(hit: store.Hit) -> None:
+            quants[hit.repo_id] = await asyncio.to_thread(variants, hit.repo_id)
+            self.show_results(hits, quants)
+            self.note(f"Reading quants: {len(quants)}/{len(hits)} models")
+
+        await asyncio.gather(*(read(hit) for hit in hits))
+        self.note("")
+
+    def show_results(self, hits: list[store.Hit], quants: dict[str, list[store.Variant]]) -> None:
         table = self.query_one("#results", DataTable)
+        cursor = table.cursor_row  # rows keep arriving while the user moves through them
         table.clear()
         self.supported = set()
-        for h, vs in zip(hits, found, strict=True):
-            support = f"✓ {h.family}" if h.family else "✗ unsupported"
-            downloads = human(h.downloads, ("", "k", "M", "B")).replace(" ", "")
-            for v in vs:
-                table.add_row(v.name, human(v.size), downloads, support, key=v.name)
-                if h.family:
-                    self.supported.add(v.name)
-        self.note("" if hits else "No models found")
+        for hit in hits:
+            support = f"✓ {hit.family}" if hit.family else "✗ unsupported"
+            downloads = human(hit.downloads, ("", "k", "M", "B")).replace(" ", "")
+            for variant in quants.get(hit.repo_id, []):
+                table.add_row(variant.name, human(variant.size), downloads, support, key=variant.name)
+                if hit.family:
+                    self.supported.add(variant.name)
+        if table.row_count:
+            table.move_cursor(row=min(cursor, table.row_count - 1))
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         event.stop()  # the manager behind this dialog downloads on its own row selection
