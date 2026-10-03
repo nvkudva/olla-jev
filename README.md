@@ -74,8 +74,8 @@ ollajev            # first run: opens the model manager; pick a model, press Ent
 ollajev run        # in another terminal: ask the model questions
 ```
 
-- The model manager lists the curated models, all under 4 GB. Run `ollajev setup` (or `ollajev tui`)
-  to open it again.
+- The model manager lists the curated models, and `n` searches Hugging Face for any other. Run
+  `ollajev setup` (or `ollajev tui`) to open it again.
 - The demo page opens at <http://127.0.0.1:8000/demo>.
 
 ## Example
@@ -115,7 +115,7 @@ A model name is its Hugging Face repo id: `<user>/<repo>`. Repos with several qu
 tag: `<user>/<repo>:<quant>` (case-insensitive) or `<user>/<repo>:<file.gguf>`. Without a tag,
 Q4_K_M is used. An `hf.co/` or `huggingface.co/` prefix is accepted and ignored.
 
-The model manager lists these, all under 4 GB:
+The model manager lists these:
 
 | Model | Download | Runs on | Languages | Limits |
 |---|---|---|---|---|
@@ -285,8 +285,8 @@ is read once and moved on the next save.
 
 ## Known limits
 
-- Phase 1 covers models under 4 GB. Bigger ones (decider-4b bf16, kev-4b and up, Nimble-9B …)
-  are planned; see `PLAN.md`.
+- There is no size limit, but nothing checks free memory before a load: a model bigger than your RAM
+  (or GPU memory) fails or swaps heavily.
 - Requests to one model run one at a time. On Apple GPUs concurrent forwards crash the process.
 - Julia-1 runs on CPU (its runtime does not move inputs to the Apple GPU); it is fast there.
 - Decision-1.0 Kai returned near-uniform `score` distributions in our tests; its `choice` and

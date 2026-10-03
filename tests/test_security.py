@@ -226,7 +226,7 @@ def test_failed_download_leaves_no_pin(home, monkeypatch):
         raise OSError("network down")
 
     monkeypatch.setattr(store, "snapshot_download", fail)
-    r = SimpleNamespace(repo_id="u/r", revision="a" * 40, allow=None, created="2026-01-01")
+    r = SimpleNamespace(repo_id="u/r", revision="a" * 40, allow=None, created="2026-01-01", base=None)
     with pytest.raises(OSError):
         store.download(r)
     assert store.pins() == {}

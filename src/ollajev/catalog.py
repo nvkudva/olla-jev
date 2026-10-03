@@ -1,4 +1,4 @@
-"""The curated phase 1 models: every one under 4 GB and checked to answer /v1/systemone."""
+"""The curated models: each one checked to answer /v1/systemone."""
 
 from __future__ import annotations
 

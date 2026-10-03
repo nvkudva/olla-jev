@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import functools
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -24,6 +26,7 @@ class Resolved:
     gguf: str | None = None  # the one .gguf file this name selects, for GGUF repos
     allow: list[str] | None = field(default=None)
     created: str | None = None  # the repo's creation date, recorded as release_date once it is downloaded
+    base: Resolved | None = None  # a quantized copy's base repo, which supplies config and tokenizer files
 
     @property
     def name(self) -> str:
@@ -58,9 +61,21 @@ def released(repo_id: str) -> str | None:
     return config.load().get("released", {}).get(repo_id)
 
 
-def _remote_files(repo_id: str, revision: str | None) -> tuple[str, str | None, list[str]]:
+def bases() -> dict[str, dict[str, str]]:
+    """copy repo -> {"repo", "revision"} of the base it was resolved against, so copies resolve offline."""
+    return config.load().get("bases", {})
+
+
+def _quantized_from(base_models: dict | None) -> list[str]:
+    """The repos Hugging Face lists as this repo's base when it is a quantization of them, else none."""
+    if not base_models or base_models.get("relation") != "quantized":
+        return []
+    return [m["id"] for m in base_models.get("models", []) if m.get("id")]
+
+
+def _remote_files(repo_id: str, revision: str | None) -> tuple[str, str | None, list[str], list[str]]:
     try:
-        info = HfApi().model_info(repo_id, revision=revision, files_metadata=False)
+        info = HfApi().model_info(repo_id, revision=revision, expand=["sha", "createdAt", "siblings", "baseModels"])
     except RepositoryNotFoundError:
         raise LookupError(
             f"model {repo_id!r} not found on Hugging Face (private or gated repos need `hf auth login`)"
@@ -68,7 +83,8 @@ def _remote_files(repo_id: str, revision: str | None) -> tuple[str, str | None, 
     if info.sha is None:
         raise LookupError(f"Hugging Face returned no commit for {repo_id!r}")
     created = info.created_at.date().isoformat() if info.created_at else None
-    return info.sha, created, [s.rfilename for s in info.siblings or []]
+    files = [s.rfilename for s in info.siblings or []]
+    return info.sha, created, files, _quantized_from(getattr(info, "base_models", None))
 
 
 def snapshot(repo_id: str, revision: str) -> CachedRevisionInfo | None:
@@ -94,8 +110,12 @@ def resolve(name: str, *, online: bool = True) -> Resolved:
     Offline (`online=False`) it uses only what is downloaded and raises LookupError otherwise.
     """
     ref = parse(name)
+    return _resolve(ref, pins().get(ref.repo_id), online=online, allow_base=True)
+
+
+def _resolve(ref: Ref, revision: str | None, *, online: bool, allow_base: bool) -> Resolved:
     created = None
-    revision = pins().get(ref.repo_id)
+    base_ids: list[str] = []
     files = _local_files(ref.repo_id, revision) if revision else None
     gguf = None
     if files is not None:
@@ -108,16 +128,43 @@ def resolve(name: str, *, online: bool = True) -> Resolved:
     if files is None:
         if not online:
             raise LookupError(f"{ref.name} is not downloaded; run: ollajev pull {ref.name}")
-        sha, created, files = _remote_files(ref.repo_id, revision)
+        sha, created, files, base_ids = _remote_files(ref.repo_id, revision)
         if revision is None:
             revision = sha  # pinned by download(), once the weights are on disk
         gguf = _pick(ref, files)
     if revision is None:  # unreachable: set from the pin or from the remote lookup above
         raise LookupError(f"no revision for {ref.name}")
-    family = detect(ref.repo_id, files)
+    try:
+        family = detect(ref.repo_id, files)
+    except LookupError:
+        base = _base(ref.repo_id, gguf, base_ids, online=online) if allow_base else None
+        if base is None:
+            raise
+        return Resolved(
+            ref, base.family, revision, files, gguf, allow=[gguf] if gguf else None, created=created, base=base
+        )
     resolved = Resolved(ref, family, revision, files, gguf, created=created)
     resolved.allow = family.allow_patterns(resolved)
     return resolved
+
+
+def _base(repo_id: str, gguf: str | None, base_ids: list[str], *, online: bool) -> Resolved | None:
+    """The base repo of a GGUF quantization that no family recognises by itself, when the base's family can run
+    the copy's GGUF with the base's config files. Offline it uses the base recorded at download time."""
+    if gguf is None:
+        return None
+    recorded = bases().get(repo_id)
+    candidates = [(recorded["repo"], recorded["revision"])] if recorded else [(b, None) for b in base_ids]
+    for base_id, revision in candidates:
+        try:
+            base = _resolve(Ref(base_id), revision, online=online, allow_base=False)
+        except (LookupError, ValueError):
+            continue
+        meta = getattr(base.family, "base_files", None)
+        if meta and not base.family.runs_repo_code:
+            base.allow = meta
+            return base
+    return None
 
 
 @dataclass(frozen=True)
@@ -138,52 +185,83 @@ class Variant:
     size: int
 
 
-def _family(repo_id: str, files: list[str]) -> Family | None:
+def _family(repo_id: str, files: list[str], base_models: dict | None = None) -> Family | None:
+    """The family that runs a repo, through its quantized base when no family recognises the repo itself."""
     try:
         return detect(repo_id, files)
     except LookupError:
+        pass
+    if not any(f.lower().endswith(".gguf") for f in files):
         return None
+    for base_id in _quantized_from(base_models):
+        family = _family(base_id, list(_repo_files(base_id)))
+        if family and getattr(family, "base_files", None) and not family.runs_repo_code:
+            return family
+    return None
+
+
+@functools.lru_cache(maxsize=256)
+def _repo_files(repo_id: str) -> tuple[str, ...]:
+    try:
+        info = HfApi().model_info(repo_id, expand=["siblings"])
+    except RepositoryNotFoundError:
+        return ()
+    return tuple(s.rfilename for s in info.siblings or [])
 
 
 def search(query: str, limit: int = 40) -> list[Hit]:
-    """Repos matching every word of `query`, supported ones first, then most downloaded first. A repo name or URL finds that repo."""
+    """Repos matching every word of `query`, supported ones first, then most downloaded first. A repo name or URL
+    finds that repo."""
     api = HfApi()
+    expand: list = ["siblings", "downloads", "baseModels"]
     try:
-        info = api.model_info(parse(query).repo_id)
+        found = [api.model_info(parse(query).repo_id, expand=expand)]
     except (ValueError, RepositoryNotFoundError):
-        pass
-    else:
-        files = [s.rfilename for s in info.siblings or []]
-        family = _family(info.id, files)
-        return [Hit(info.id, info.downloads or 0, family.name if family else None)]
-    words = query.lower().split()
-    if not words:
-        return []
-    found = api.list_models(search=max(words, key=len), sort="downloads", limit=200, expand=["siblings", "downloads"])
-    hits = []
-    for m in found:
-        if all(w in m.id.lower() for w in words):
-            family = _family(m.id, [s.rfilename for s in m.siblings or []])
-            hits.append(Hit(m.id, m.downloads or 0, family.name if family else None))
+        words = query.lower().split()
+        if not words:
+            return []
+        found = [
+            m
+            for m in api.list_models(search=max(words, key=len), sort="downloads", limit=200, expand=expand)
+            if all(w in m.id.lower() for w in words)
+        ]
+
+    def hit(m) -> Hit:
+        family = _family(m.id, [s.rfilename for s in m.siblings or []], getattr(m, "base_models", None))
+        return Hit(m.id, m.downloads or 0, family.name if family else None)
+
+    with ThreadPoolExecutor(8) as pool:  # a quantized copy costs one lookup of its base repo
+        hits = list(pool.map(hit, found))
     return sorted(hits, key=lambda h: h.family is None)[:limit]  # stable: keeps the download order
 
 
 def variants(repo_id: str) -> list[Variant]:
     """A repo's GGUF quants, or its full weights, with download sizes, smallest first."""
-    info = HfApi().model_info(repo_id, files_metadata=True)
-    return _variants(repo_id, info.sha or "", {s.rfilename: s.size or 0 for s in info.siblings or []})
+    api = HfApi()
+    info = api.model_info(repo_id, files_metadata=True)
+    sizes = {s.rfilename: s.size or 0 for s in info.siblings or []}
+    family = _family(repo_id, list(sizes))
+    copy = False
+    if family is None:
+        family = _family(
+            repo_id, list(sizes), getattr(api.model_info(repo_id, expand=["baseModels"]), "base_models", None)
+        )
+        copy = family is not None
+    return _variants(repo_id, info.sha or "", sizes, family, copy=copy)
 
 
-def _variants(repo_id: str, sha: str, sizes: dict[str, int]) -> list[Variant]:
+def _variants(
+    repo_id: str, sha: str, sizes: dict[str, int], family: Family | None, *, copy: bool = False
+) -> list[Variant]:
+    """copy: the weights come from this repo and the config files from its base, so only the weights count."""
     files = list(sizes)
-    family = _family(repo_id, files)
     ggufs = [f for f in files if f.lower().endswith(".gguf")]
     quants = [quant_of(f) for f in ggufs]
     tags = [q if q and quants.count(q) == 1 else f.rsplit("/", 1)[-1] for f, q in zip(ggufs, quants, strict=True)]
     found = []
     for tag, gguf in zip(tags, ggufs, strict=True) if ggufs else [(None, None)]:
         ref = Ref(repo_id, tag)
-        if family:
+        if family and not copy:
             allow = family.allow_patterns(Resolved(ref, family, sha, files, gguf))
             size = sum(sizes[f] for f in filter_repo_objects(files, allow_patterns=allow))
         else:
@@ -201,6 +279,9 @@ def _pick(ref: Ref, files: list[str]) -> str | None:
 
 
 def local_path(r: Resolved) -> str | None:
+    """The snapshot folder holding `r`'s weights, or None until it and, for a copy, its base files are on disk."""
+    if r.base and local_path(r.base) is None:
+        return None
     try:
         return snapshot_download(
             r.repo_id, revision=r.revision, allow_patterns=r.allow, cache_dir=config.models_dir(), local_files_only=True
@@ -210,7 +291,14 @@ def local_path(r: Resolved) -> str | None:
 
 
 def download(r: Resolved) -> str:
-    """Fetch the snapshot, then pin the repo to this commit if it has no pin yet."""
+    """Fetch the snapshot, then pin the repo to this commit if it has no pin yet. A copy also fetches its base's
+    config files and records which base commit they came from."""
+    if r.base:
+        snapshot_download(
+            r.base.repo_id, revision=r.base.revision, allow_patterns=r.base.allow, cache_dir=config.models_dir()
+        )
+        with config.edit() as data:
+            data.setdefault("bases", {})[r.repo_id] = {"repo": r.base.repo_id, "revision": r.base.revision}
     path = snapshot_download(r.repo_id, revision=r.revision, allow_patterns=r.allow, cache_dir=config.models_dir())
     if r.repo_id not in pins():
         _pin(r.repo_id, r.revision, r.created)
@@ -272,6 +360,7 @@ def delete(repo_id: str) -> int:
     with config.edit() as data:
         data.get("pins", {}).pop(repo_id, None)
         data.get("released", {}).pop(repo_id, None)
+        data.get("bases", {}).pop(repo_id, None)
         data["trusted"] = [t for t in data.get("trusted", []) if not t.startswith(f"{repo_id}@")]
     return freed
 

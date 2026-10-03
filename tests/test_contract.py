@@ -202,13 +202,13 @@ def test_variants_name_each_quant_and_size_its_download():
         "decider_config.json": 1,
         "tokenizer.json": 1,
     }
-    found = store._variants("Mapika/decider-x-GGUF", "sha", sizes)
+    found = store._variants("Mapika/decider-x-GGUF", "sha", sizes, store._family("Mapika/decider-x-GGUF", list(sizes)))
     assert [(v.name, v.size) for v in found] == [
         ("Mapika/decider-x-GGUF:Q4_K_M", 6),
         ("Mapika/decider-x-GGUF:m-Q4_K_M-imat.gguf", 7),
         ("Mapika/decider-x-GGUF:Q8_0", 10),
     ]
-    assert [v.name for v in store._variants("u/r", "sha", {"weights.bin": 3})] == ["u/r"]
+    assert [v.name for v in store._variants("u/r", "sha", {"weights.bin": 3}, None)] == ["u/r"]
 
 
 def test_search_lists_supported_models_first(monkeypatch):
@@ -222,7 +222,7 @@ def test_search_lists_supported_models_first(monkeypatch):
     ]
 
     class Api:
-        def model_info(self, repo_id):
+        def model_info(self, repo_id, **kwargs):
             raise store.RepositoryNotFoundError("missing")
 
         def list_models(self, **kwargs):
@@ -230,3 +230,28 @@ def test_search_lists_supported_models_first(monkeypatch):
 
     monkeypatch.setattr(store, "HfApi", Api)
     assert [h.repo_id for h in store.search("a")] == ["u/a-decider", "u/a-GGUF"]
+
+
+def test_a_quantized_copy_runs_on_its_base_family(tmp_path, monkeypatch):
+    monkeypatch.setenv("OLLAJEV_HOME", str(tmp_path))
+    monkeypatch.setenv("OLLAJEV_MODELS", str(tmp_path / "models"))
+    repos = {
+        "q/decider-GGUF": ("c1", ["decider.Q4_K_M.gguf", "README.md"], ["Mapika/decider-x"]),
+        "Mapika/decider-x": ("b1", ["decider_config.json", "model.safetensors", "tokenizer.json"], []),
+        "q/laya-GGUF": ("c2", ["laya.Q4_K_M.gguf"], ["convaiinnovations/laya"]),
+        "convaiinnovations/laya": ("b2", ["rl_agent_config.json", "model.safetensors"], []),
+    }
+    monkeypatch.setattr(store, "_remote_files", lambda repo, rev: (repos[repo][0], None, *repos[repo][1:]))
+    r = store.resolve("q/decider-GGUF")
+    assert (r.family.name, r.gguf, r.allow) == ("decider", "decider.Q4_K_M.gguf", ["decider.Q4_K_M.gguf"])
+    assert r.base is not None and (r.base.repo_id, r.base.revision) == ("Mapika/decider-x", "b1")
+    assert "*.json" in (r.base.allow or [])
+    with pytest.raises(LookupError):  # laya cannot run a GGUF with its base's files
+        store.resolve("q/laya-GGUF")
+
+
+def test_only_quantizations_inherit_a_family():
+    models = [{"id": "Mapika/decider-x"}]
+    assert store._quantized_from({"relation": "quantized", "models": models}) == ["Mapika/decider-x"]
+    assert store._quantized_from({"relation": "finetune", "models": models}) == []
+    assert store._quantized_from(None) == []
