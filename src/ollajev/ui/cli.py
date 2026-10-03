@@ -167,6 +167,13 @@ def configure_logging(path: str) -> None:
     console.setLevel(logging.WARNING)
     console.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
     root.handlers = [file, console]
+    # Model loads and unloads are what a person watching the server wants to see, e.g. after switching
+    # models in the demo. Only INFO here: warnings already reach the console through the root handler.
+    events = logging.StreamHandler()
+    events.setFormatter(logging.Formatter("==> %(message)s"))
+    events.addFilter(lambda record: record.levelno == logging.INFO)
+    manager_log = logging.getLogger("ollajev.manager")
+    manager_log.handlers = [events]
 
 
 def listen_address(args: argparse.Namespace) -> tuple[str, int, bool]:
@@ -240,8 +247,7 @@ def cmd_serve(args: argparse.Namespace) -> None:
     config.update(server_url=base)
 
     api.preload = preload_name(model)
-    if api.preload:
-        print(f"==> Loading {api.preload}", flush=True)
+    if api.preload:  # the manager prints "Loading …" itself
         api.pin_preload = True
     threading.Thread(
         target=_announce_when_ready, args=(base, api.preload, not args.no_browser, args.log_file), daemon=True
@@ -250,28 +256,23 @@ def cmd_serve(args: argparse.Namespace) -> None:
 
 
 def banner(base: str, model: str | None, log_file: str) -> str:
-    return "\n".join(
-        [
-            "",
-            f"==> Ready on {base}" + (f", serving {model}" if model else ""),
-            "",
-            "    Jev / System One API",
-            f"      GET   {base}/v1/models        downloaded models",
-            f'      POST  {base}/v1/systemone     answer questions about a state ("model" picks the model)',
-            "",
-            "    Model management (Ollama style)",
-            f"      GET   {base}/api/tags  ·  /api/ps  ·  POST /api/pull  ·  /api/show  ·  DELETE /api/delete",
-            "",
-            f"    Demo page   {base}/demo",
-            "",
-            "    For the TypeSafe SDK:",
-            f"      export TYPESAFE_BASE_URL={base}",
-            "      export TYPESAFE_API_KEY=" + ("$OLLAJEV_API_KEY" if config.api_key() else "local"),
-            "",
-            f"    Logging to {log_file}. Ctrl-C to stop.",
-            "",
-        ]
-    )
+    key = "$OLLAJEV_API_KEY" if config.api_key() else "local"
+    serving = model or f"none yet; pull one with: ollajev pull {config.DEFAULT_MODEL}"
+    rows = [
+        ("Serving", serving),
+        ("Demo", f"{base}/demo"),
+        ("API", "POST /v1/systemone   answer questions about a state"),
+        ("", "GET  /v1/models      downloaded models"),
+        ("Manage", "GET /api/tags · /api/ps · /api/show · POST /api/pull · DELETE /api/delete"),
+        ("SDK", f"export TYPESAFE_BASE_URL={base}"),
+        ("", f"export TYPESAFE_API_KEY={key}"),
+        ("Logs", log_file),
+    ]
+    lines = ["", f"==> Ready on {base}", ""]
+    for label, value in rows:
+        lines.append(f"    {label:<9}{value}")
+    lines += ["", "    A request can name any downloaded model; loads and unloads show below. Ctrl-C to stop.", ""]
+    return "\n".join(lines)
 
 
 def _announce_when_ready(base: str, model: str | None, open_browser: bool, log_file: str) -> None:

@@ -139,11 +139,11 @@ class Manager:
                 f"{key} needs about {need / 2**30:.1f} GiB but only {free / 2**30:.1f} GiB is free on {device}; "
                 "stop a loaded model (ollajev stop) or close other apps, or pick a smaller quant"
             )
-        log.info("loading %s on %s", key, device)
+        log.info("Loading %s on %s …", key, device)
         started = time.monotonic()
         adapter = resolved.family.load(path, resolved, device)
         adapter.name = key
-        log.info("loaded %s in %.1fs", key, time.monotonic() - started)
+        log.info("Loaded %s in %.1f s", key, time.monotonic() - started)
         slot = Slot(key, adapter, resolved, getattr(adapter, "device", None) or device)
         with self._guard:
             self._slots[key] = slot
@@ -171,7 +171,7 @@ class Manager:
         del slot
         gc.collect()
         _empty_device_cache()
-        log.info("unloaded %s", name)
+        log.info("Unloaded %s", name)
         return True
 
     def unload_all(self) -> None:

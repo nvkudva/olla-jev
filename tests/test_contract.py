@@ -355,3 +355,22 @@ def test_a_cancelled_download_stops_at_its_next_progress_update(monkeypatch):
     r = SimpleNamespace(repo_id="u/r", revision="a" * 40, allow=None, base=None)
     with pytest.raises(store.Cancelled):
         store.download(r, cancel)
+
+
+def test_model_loads_show_on_the_server_console(tmp_path, capsys):
+    import logging
+
+    from ollajev.ui import cli
+
+    root, manager_log = logging.getLogger(), logging.getLogger("ollajev.manager")
+    saved = root.handlers[:], root.level, manager_log.handlers[:]
+    try:
+        cli.configure_logging(str(tmp_path / "server.log"))
+        manager_log.info("Loading a/b on cpu …")
+        manager_log.warning("low memory")
+    finally:
+        root.handlers, manager_log.handlers = saved[0], saved[2]
+        root.setLevel(saved[1])
+    err = capsys.readouterr().err
+    assert "==> Loading a/b on cpu …" in err
+    assert err.count("low memory") == 1
