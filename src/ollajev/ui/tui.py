@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -20,6 +22,11 @@ from ..catalog import CATALOG
 from ..manager import canonical, canonical_or, default_model, lookup
 from ..server import admin
 from . import dialogs, repl
+
+try:
+    import termios
+except ImportError:  # Windows: no termios, and its console needs none of this
+    termios = None  # type: ignore[assignment]
 
 log = logging.getLogger(__name__)
 
@@ -567,7 +574,8 @@ class Models(App[bool]):
             entry = next((e for e in CATALOG if e.name == name), None)
             await self.push_screen_wait(
                 dialogs.Info(
-                    name, f"{entry.description if entry else 'unknown model'}\n\nNot downloaded. Press Enter or Download to get it."
+                    name,
+                    f"{entry.description if entry else 'unknown model'}\n\nNot downloaded. Press Enter or Download to get it.",
                 )
             )
             return
@@ -646,6 +654,25 @@ esc     cancel a download
 q       quit"""
 
 
+# Plain keys (kitty keyboard flags 0), every mouse report mode off, bracketed paste off, cursor shown.
+TERMINAL_RESET = "\x1b[=0;1u\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l\x1b[?2004l\x1b[?25h"
+
+
+def restore_terminal() -> None:
+    """Make sure the shell gets a plain terminal back. Textual resets it on exit, but some terminals keep the
+    kitty keyboard mode per screen, so Enter then arrives as ESC[13u and prints "u"; and key releases or query
+    replies that arrive after the app stopped reading would land in the shell as stray text."""
+    if sys.stdout.isatty():
+        sys.stdout.write(TERMINAL_RESET)
+        sys.stdout.flush()
+    if termios is not None and sys.stdin.isatty():
+        with contextlib.suppress(termios.error):
+            termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
+
+
 def manage() -> bool:
     """Open the model manager. True when the user chose to serve."""
-    return bool(Models().run())
+    try:
+        return bool(Models().run())
+    finally:
+        restore_terminal()
