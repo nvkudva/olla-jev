@@ -130,6 +130,7 @@ MENU = [
     ("n", "+ Add", "add"),
     ("d", "★ Default", "set_default"),
     ("/", "▽ Filter", "filter"),
+    ("w", "⧉ Demo", "open_demo"),
     ("o", "⚙ Settings", "options"),
     ("?", "? Help", "help"),
     ("q", "← Quit", "quit_app"),
@@ -155,6 +156,7 @@ class Models(App[bool]):
         Binding("a", "alias", "Alias", show=False),
         Binding("o", "options", "Options", show=False),
         Binding("b", "service", "Service", show=False),
+        Binding("w", "open_demo", "Demo", show=False),
         Binding("ctrl+r", "reload_list", "Refresh", show=False),
         Binding("e", "last_error", "Error", show=False),
         Binding("escape", "cancel_job", "Cancel", show=False),
@@ -807,8 +809,11 @@ class Models(App[bool]):
             self.notify("No server from this window to restart", severity="warning")
 
     def action_open_demo(self) -> None:
-        if client.server_running():
-            webbrowser.open(f"{client.server_url()}/demo")
+        """Open the demo page of the running server in the browser."""
+        if not client.server_running():
+            self.notify("Start the server first (s, or ▶ Serve on a model)", severity="warning")
+            return
+        webbrowser.open(f"{client.server_url()}/demo")
 
     def show_server_panel(self, server_up: bool, loaded: set[str]) -> None:
         """The Server panel: shown while a server runs or this window's server starts or has stopped."""
@@ -879,7 +884,8 @@ KEYS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "Server",
         [
             ("s", "start the server here, or restart it", "serve"),
-            ("o", "device, address and port for the server", ""),
+            ("w", "open the demo page in the browser", ""),
+            ("o", "settings: device, address, port, memory", ""),
             ("b", "install or remove the background service", "service"),
         ],
     ),

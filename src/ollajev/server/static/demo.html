@@ -51,6 +51,7 @@
             <button type="button" class="ghost is-on" data-view="ui" aria-pressed="true">UI</button>
             <button type="button" class="ghost" data-view="json" aria-pressed="false">JSON</button>
           </div>
+          <button type="button" class="ghost" id="curl-open" title="This request as a curl command">curl</button>
           <button type="button" id="send" title="Send the request (⌘/Ctrl+Enter)">Send</button>
         </div>
       </div>
@@ -112,6 +113,14 @@
 
 </div>
 
+<dialog id="curl-dialog" aria-labelledby="curl-title">
+  <h2 id="curl-title">This request as curl</h2>
+  <pre id="curl-text"></pre>
+  <div class="curl-tools">
+    <button type="button" class="ghost" id="curl-copy">Copy</button>
+    <button type="button" class="ghost" id="curl-close">Close</button>
+  </div>
+</dialog>
 <script type="module" src="/static/main.js"></script>
 </body>
 </html>

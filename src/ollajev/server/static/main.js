@@ -633,3 +633,42 @@ fetch("/ui/presets").then((r) => r.json()).then((presets) => {
     store.set("ollajev.visited", true);
   }
 }).catch(() => {});
+
+// ---- curl ----------------------------------------------------------------
+// The request on screen (the JSON pane's text when that view is open) as a command to paste in a shell.
+
+/** POSIX single quotes: the text stays exactly as is, and each ' becomes '\''. */
+function shellQuote(text) {
+  return `'${text.replaceAll("'", `'\\''`)}'`;
+}
+
+function curlCommand(body) {
+  return [
+    `curl -s ${shellQuote(`${location.origin}/v1/systemone`)} \\`,
+    `  -H 'content-type: application/json' \\`,
+    `  -d ${shellQuote(JSON.stringify(body, null, 2))}`,
+  ].join("\n");
+}
+
+const curlDialog = $("#curl-dialog");
+$("#curl-open").onclick = () => {
+  let body;
+  try {
+    body = qView === "json" ? JSON.parse(jsonPane.read()) : requestBody({ strict: false });
+  } catch (e) {
+    failRequest(`Not a valid request: ${e.message}`);
+    return;
+  }
+  $("#curl-text").textContent = curlCommand(body);
+  $("#curl-copy").textContent = "Copy";
+  curlDialog.showModal();
+};
+$("#curl-copy").onclick = async () => {
+  try {
+    await navigator.clipboard.writeText($("#curl-text").textContent);
+    $("#curl-copy").textContent = "Copied";
+  } catch {
+    $("#curl-copy").textContent = "Select and copy by hand";
+  }
+};
+$("#curl-close").onclick = () => curlDialog.close();

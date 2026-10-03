@@ -408,6 +408,20 @@ footer { flex: none; border-top: 1px solid var(--rule); background: var(--surfac
 footer a { color: var(--signal); }
 .icon { vertical-align: baseline; flex: none; opacity: 0.8; }
 
+/* The curl dialog: the command in the page's monospace, scrollable, with Copy and Close under it. */
+#curl-dialog {
+  width: min(760px, calc(100vw - 32px)); max-height: 80vh; padding: 16px; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 2px;
+
+  &::backdrop { background: rgb(0 0 0 / 0.35); }
+  & h2 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+  & pre {
+    margin: 0; max-height: 60vh; overflow: auto; padding: 10px; font: 12px/1.55 var(--mono);
+    border: 1px solid var(--rule); border-radius: 2px; white-space: pre; user-select: all;
+  }
+}
+.curl-tools { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+
 /* --- 10. responsive ----------------------------------------------------- */
 
 @media (max-width: 900px) {

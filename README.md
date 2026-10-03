@@ -209,6 +209,7 @@ Run `ollajev <command> --help` for options and an example.
 | `a` | `cp` | give it a short name |
 | `i` | `show` | family, commit, limits, path |
 | `n` | `pull` | add any Hugging Face repo by name |
+| `w` | | open the demo page of the running server |
 | `o` | | settings: device, address, port, how long an idle model stays loaded, models in memory; saved in `~/.ollajev/config.json` |
 | `b` | `service` | install or remove the background service |
 | `s` | `serve` | start the server for the default model, or restart it |
