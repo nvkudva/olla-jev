@@ -355,12 +355,13 @@ def download(resolved: Resolved, cancel: threading.Event | None = None) -> str:
     fetch = functools.partial(snapshot_download, cache_dir=config.models_dir(), tqdm_class=_cancellable(cancel))
     if resolved.base:
         fetch(resolved.base.repo_id, revision=resolved.base.revision, allow_patterns=resolved.base.allow)
+    path = fetch(resolved.repo_id, revision=resolved.revision, allow_patterns=resolved.allow)
+    if resolved.base:  # recorded once both are on disk, so a cancelled pull leaves no half record
         with config.edit() as data:
             data.setdefault("bases", {})[resolved.repo_id] = {
                 "repo": resolved.base.repo_id,
                 "revision": resolved.base.revision,
             }
-    path = fetch(resolved.repo_id, revision=resolved.revision, allow_patterns=resolved.allow)
     if resolved.repo_id not in pins():
         _pin(resolved.repo_id, resolved.revision, resolved.created)
     return path
