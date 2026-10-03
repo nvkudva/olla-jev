@@ -234,6 +234,15 @@ def test_search_lists_supported_models_first(monkeypatch):
     monkeypatch.setattr(store, "HfApi", Api)
     assert [h.repo_id for h in store.search("a")] == ["u/a-decider", "u/a-GGUF"]
 
+    class Gone(Api):  # a repo deleted after the listing does not fail the whole search
+        def model_info(self, repo_id, **kwargs):
+            if repo_id == "u/a-GGUF":
+                raise store.RepositoryNotFoundError.__new__(store.RepositoryNotFoundError)
+            return super().model_info(repo_id, **kwargs)
+
+    monkeypatch.setattr(store, "HfApi", Gone)
+    assert [(h.repo_id, h.family) for h in store.search("a")] == [("u/a-decider", "decider"), ("u/a-GGUF", None)]
+
 
 def test_a_quantized_copy_runs_on_its_base_family(tmp_path, monkeypatch):
     monkeypatch.setenv("OLLAJEV_HOME", str(tmp_path))

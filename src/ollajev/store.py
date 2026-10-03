@@ -235,8 +235,8 @@ def _repo_files(repo_id: str) -> tuple[str, ...]:
 
 
 def search(query: str, limit: int = 40) -> list[Hit]:
-    """Repos matching every word of `query`, supported ones first, then most downloaded first. A repo name or URL
-    finds that repo."""
+    """Repos matching every word of `query`, supported ones first, then most downloaded first. Only the 100 most
+    downloaded matches are checked for support. A repo name or URL finds that repo."""
     api = HfApi()
     expand: list = ["siblings", "downloads", "baseModels"]
     try:
@@ -246,23 +246,29 @@ def search(query: str, limit: int = 40) -> list[Hit]:
         if not words:
             return []
         # Listing 200 repos takes 25 s with the default fields and 50 s with `siblings`, but under a second
-        # with `downloads` only, so list ids and read the files of the first matches one by one.
-        ids = [
-            m.id
+        # with `downloads` only, so list ids and read the files of the top 100 matches one by one.
+        listed = [
+            m
             for m in api.list_models(search=max(words, key=len), sort="downloads", limit=200, expand=["downloads"])
             if all(w in m.id.lower() for w in words)
-        ][:limit]
+        ][:100]
         found = None
 
     def hit(m) -> Hit:
         family = _family(m.id, [s.rfilename for s in m.siblings or []], getattr(m, "base_models", None))
         return Hit(m.id, m.downloads or 0, family.name if family else None)
 
+    def lookup(m) -> Hit:  # a repo deleted or made private since the listing stays, as unsupported
+        try:
+            return hit(api.model_info(m.id, expand=expand))
+        except RepositoryNotFoundError:
+            return Hit(m.id, m.downloads or 0, None)
+
     if found is not None:
         hits = [hit(m) for m in found]
     else:  # one chain per repo: its files, then (for a quantized copy) its base repo's files
         with ThreadPoolExecutor(16) as pool:
-            hits = list(pool.map(lambda repo_id: hit(api.model_info(repo_id, expand=expand)), ids))
+            hits = list(pool.map(lookup, listed))
     return sorted(hits, key=lambda h: h.family is None)[:limit]  # stable: keeps the download order
 
 
