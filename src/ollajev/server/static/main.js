@@ -428,6 +428,7 @@ function turnHeadMarkup(turn, index) {
       <span class="turn-meta">
         ${tokens >= 450 ? html`<span class="turn-warn" title="Content past the 512-token context limit is silently truncated">⚠ near 512-tok limit</span>` : ""}
         <span>${turn.data ? (tokens != null ? `${tokens} tok` : "done") : turn.pending ? "sending…" : "failed"}</span>
+        ${turn.ms != null ? html`<span title="Time from sending the request to its answer, model load included">${turn.ms} ms</span>` : ""}
         <div class="seg turn-view" role="group" aria-label="View for request ${index + 1}">
           <button type="button" class="ghost" data-act="turn-view" data-i="${index}" data-view="ui" aria-pressed="true">UI</button>
           <button type="button" class="ghost" data-act="turn-view" data-i="${index}" data-view="json" aria-pressed="false">JSON</button>
@@ -458,7 +459,10 @@ function turnMarkup(turn, index) {
 function showReadout(turn) {
   if (!turn.data) return;
   const tokens = turn.data.usage?.input_tokens;
-  $("#r-tokens").textContent = tokens != null ? `${tokens} tok` : "—";
+  const parts = [];
+  if (tokens != null) parts.push(`${tokens} tok`);
+  if (turn.ms != null) parts.push(`${turn.ms} ms`);
+  $("#r-tokens").textContent = parts.join(" · ") || "—";
 }
 
 const scrollLog = () => { log.parentElement.scrollTop = log.parentElement.scrollHeight; };
@@ -492,6 +496,7 @@ async function ask(request) {
   syncOpen();
 
   let turn;
+  const started = performance.now();
   try {
     const res = await fetch("/v1/systemone", {
       method: "POST",
@@ -499,7 +504,9 @@ async function ask(request) {
       body: JSON.stringify(request),
     });
     const body = await res.json();
-    turn = res.ok ? { request, data: body, at } : { request, error: body.detail ?? `HTTP ${res.status}`, at };
+    // Round trip as the browser saw it: it includes a model load when the model was not in memory yet.
+    const ms = Math.round(performance.now() - started);
+    turn = res.ok ? { request, data: body, at, ms } : { request, error: body.detail ?? `HTTP ${res.status}`, at, ms };
   } catch (e) {
     turn = { request, error: `Could not reach the server or read its reply (${e.message ?? e}).`, at };
   } finally {
