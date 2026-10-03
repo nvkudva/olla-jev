@@ -24,7 +24,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, DataTable, Static
 
-from .. import client, config, service, store
+from .. import client, config, names, service, store
 from ..catalog import CATALOG
 from ..manager import canonical, canonical_or, default_model, lookup
 from ..server import admin
@@ -169,7 +169,9 @@ class Row(NamedTuple):
     size: str
     estimated: bool  # the size is the catalog's or Hugging Face's figure, not the files on disk
     downloads: str  # Hugging Face download count, empty until it is read or when it cannot be
-    languages: str  # the catalog's languages, or the family of a model outside the catalog
+    adapter: str  # the family that answers for it, empty until it is read
+    runtime: str  # what runs the weights: llama.cpp, ONNX or PyTorch
+    languages: str  # the catalog's languages, empty for a model outside the catalog
 
 
 # The menu bar at the top: (key, label, action). Every key works from the keyboard too; ? lists them all.
@@ -225,6 +227,7 @@ class Models(App[bool]):
         self.load_lock = threading.Lock()
         self.quants: dict[str, list[store.Variant]] = {}  # catalog GGUF repo -> all its quants on Hugging Face
         self.totals: dict[str, int] = {}  # repo -> its download count on Hugging Face
+        self.adapters: dict[str, str] = {}  # repo -> the family that runs it, for repos outside the download
         self.server: subprocess.Popen[bytes] | None = None  # a server this window started, if any
         self.server_model: str | None = None  # what that server was started with
         self.snapshot_cache: tuple[dict[str, Any], str, bool, set[str]] | None = None  # to redraw on a theme change
@@ -300,10 +303,11 @@ class Models(App[bool]):
 
     @work(group="downloads")
     async def load_downloads(self) -> None:
-        """Fill the Downloads column with each listed repo's count on Hugging Face. Offline, the column stays empty."""
+        """Fill the Downloads and Adapter columns for each listed repo. Offline, both stay empty."""
         repos = list(dict.fromkeys(row.partition(":")[0] for row in self.names or [e.name for e in CATALOG]))
-        found = await asyncio.gather(*(asyncio.to_thread(store.downloads, repo) for repo in repos))
-        self.totals = {repo: n for repo, n in zip(repos, found, strict=True) if n is not None}
+        found = await asyncio.gather(*(asyncio.to_thread(store.listing, repo) for repo in repos))
+        self.totals = {repo: total for repo, (total, _) in zip(repos, found, strict=True) if total is not None}
+        self.adapters = {repo: family for repo, (_, family) in zip(repos, found, strict=True) if family}
         self.reload()
 
     def say(self, text: str, kind: str = "busy") -> None:
@@ -372,6 +376,8 @@ class Models(App[bool]):
         table.add_column("Model", width=model_width, key="model")
         table.add_column(Text("Size", justify="right"), width=8, key="size")
         table.add_column(Text("Downloads", justify="right"), width=10, key="downloads")
+        table.add_column("Adapter", width=16, key="adapter")
+        table.add_column("Runtime", width=10, key="runtime")
         table.add_column("Lang", width=6, key="lang")
         table.add_column("Actions", key="actions")
         self.names, self.sizes = [], {}
@@ -380,12 +386,16 @@ class Models(App[bool]):
             self.sizes[row.name] = row.size
             size = Text(row.size, justify="right", style="dim italic" if row.estimated else "")
             downloads = Text(row.downloads, justify="right", style="dim")
+            adapter = Text(row.adapter, style="dim")
+            runtime = Text(row.runtime, style="dim")
             language = Text(LANGUAGE_SHORT.get(row.languages, row.languages), style="dim")
             table.add_row(
                 self.state_pills(row.name == default, is_loaded, on_disk),
                 row.label,
                 size,
                 downloads,
+                adapter,
+                runtime,
                 language,
                 self.row_actions(row.name, on_disk, is_loaded),
                 key=row.name,
@@ -462,7 +472,18 @@ class Models(App[bool]):
             if quant:
                 label.append(f":{quant}", style="dim")
             size, estimated = self.size_of(entry.name, have, entry.size_gb * 1e9)
-            rows.append(Row(entry.name, label, size, estimated, self.count_of(entry.name), entry.languages))
+            rows.append(
+                Row(
+                    entry.name,
+                    label,
+                    size,
+                    estimated,
+                    self.count_of(entry.name),
+                    self.adapter_of(entry.name, have),
+                    self.runtime_of(entry.name, have),
+                    entry.languages,
+                )
+            )
             later_entries = CATALOG[index + 1 :]
             last_of_repo = all(other.name.partition(":")[0] != repo for other in later_entries)
             if not last_of_repo:
@@ -472,7 +493,18 @@ class Models(App[bool]):
                 branch = "└" if position == len(others) - 1 else "├"
                 label = Text(f"  {branch} {variant.name.partition(':')[2] or variant.name}", style="dim")
                 size, estimated = self.size_of(variant.name, have, variant.size)
-                rows.append(Row(variant.name, label, size, estimated, self.count_of(variant.name), entry.languages))
+                rows.append(
+                    Row(
+                        variant.name,
+                        label,
+                        size,
+                        estimated,
+                        self.count_of(variant.name),
+                        self.adapter_of(variant.name, have),
+                        self.runtime_of(variant.name, have),
+                        entry.languages,
+                    )
+                )
         listed = {row.name for row in rows}
         for name, model in have.items():
             if name not in listed:
@@ -484,9 +516,25 @@ class Models(App[bool]):
                         False,
                         self.count_of(name),
                         model["details"]["family"],
+                        self.runtime_of(name, have),
+                        "",
                     )
                 )
         return rows
+
+    def adapter_of(self, name: str, have: dict[str, Any]) -> str:
+        """The Adapter cell: the family that answers for the model. A download knows it; a listed one is read
+        from Hugging Face, and the cell stays empty until that arrives."""
+        if name in have:
+            return have[name]["details"]["family"]
+        return self.adapters.get(name.partition(":")[0], "")
+
+    def runtime_of(self, name: str, have: dict[str, Any]) -> str:
+        """The Runtime cell: what runs the weights. A downloaded one has the format of the file its family loads
+        recorded, which is authoritative; a listed one is read from its tag."""
+        if name in have:
+            return names.RUNTIMES.get(have[name]["details"]["format"], names.RUNTIMES["safetensors"])
+        return names.runtime_of(name.partition(":")[2] or None)
 
     def count_of(self, name: str) -> str:
         """The Downloads cell for a model name: empty until read, or when Hugging Face has no count for it."""

@@ -83,6 +83,22 @@ def format_of(filename: str) -> str | None:
     return suffix[1:] if suffix in FORMATS else None
 
 
+# The runtime a weight file needs; `safetensors` is the repo's full PyTorch weights.
+RUNTIMES = {"gguf": "llama.cpp", "onnx": "ONNX", "safetensors": "PyTorch"}
+
+
+def runtime_of(tag: str | None) -> str:
+    """The runtime a `<repo>:<tag>` name runs on: llama.cpp for a GGUF file or quant tag, ONNX Runtime for an
+    export, PyTorch for the repo's full weights."""
+    if tag:
+        # quant_of and precision_of read file names; a bare tag is that name without its extension.
+        if format_of(tag) == "gguf" or quant_of(f"-{tag}.gguf"):
+            return RUNTIMES["gguf"]
+        if format_of(tag) == "onnx" or precision_of(f"-{tag}.onnx"):
+            return RUNTIMES["onnx"]
+    return RUNTIMES["safetensors"]
+
+
 def weight_files(files: list[str]) -> list[str]:
     """A repo's variants, one weight file each: its .gguf files, or its .onnx files when it has no GGUF.
     Vision projectors (`mmproj`) are not variants: no family loads them as a model."""

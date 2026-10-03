@@ -279,13 +279,15 @@ def _repo_files(repo_id: str) -> tuple[str, ...]:
 
 
 @functools.lru_cache(maxsize=256)
-def downloads(repo_id: str) -> int | None:
-    """A repo's download count on Hugging Face, or None when it does not answer within 10 s."""
+def listing(repo_id: str) -> tuple[int | None, str | None]:
+    """A repo's download count and the family that runs it, in one call; (None, None) when Hugging Face does not
+    answer within 10 s. A model list needs both per repo."""
     try:
-        info = HfApi().model_info(repo_id, expand=["downloads"], timeout=10)
+        info = HfApi().model_info(repo_id, expand=["downloads", "siblings", "baseModels"], timeout=10)
     except (RepositoryNotFoundError, httpx.HTTPError):
-        return None
-    return info.downloads or 0
+        return None, None
+    family = _family(repo_id, [s.rfilename for s in info.siblings or []], getattr(info, "base_models", None))
+    return info.downloads or 0, family.name if family else None
 
 
 def search(query: str, limit: int = 40) -> list[Hit]:

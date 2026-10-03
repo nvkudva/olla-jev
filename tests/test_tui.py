@@ -130,7 +130,9 @@ def test_add_model_lists_every_quant_and_returns_the_picked_one(app, monkeypatch
             await pilot.pause(0.5)
             results = app.screen.query_one("#results", DataTable)
             rows = [results.get_row_at(i) for i in range(results.row_count)]
-            assert rows[0] == ["u/ok-GGUF:Q4_K_M", "2.7 GB", "1.2k", "✓ decider"]
+            assert rows[0] == ["u/ok-GGUF:Q4_K_M", "2.7 GB", "1.2k", "✓ decider", "llama.cpp"]
+            # No family runs u/no-GGUF, so its quant stays unpickable and has no runtime to name.
+            assert rows[2] == ["u/no-GGUF:Q4_K_M", "2.7 GB", "5", "✗ unsupported", ""]
             assert [r[0] for r in rows] == ["u/ok-GGUF:Q4_K_M", "u/ok-GGUF:Q8_0", "u/no-GGUF:Q4_K_M", "u/no-GGUF:Q8_0"]
             await pilot.press("down", "enter")
             await pilot.pause()

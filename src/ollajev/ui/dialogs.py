@@ -17,7 +17,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Input, Select, Static, TextArea
 
-from .. import client, config, store
+from .. import client, config, names, store
 from . import repl
 
 log = logging.getLogger(__name__)
@@ -84,6 +84,11 @@ def count(value: int) -> str:
     return human(value, ("", "k", "M", "B")).replace(" ", "")
 
 
+def runtime(variant: str) -> str:
+    """What runs a listed variant: its tag names the weight file, which names the runtime."""
+    return names.runtime_of(variant.partition(":")[2] or None)
+
+
 class AddModel(Clickable, ModalScreen[str | None]):
     """Search Hugging Face and list every quant of every matching repo in one table. Returns the name `pull`
     takes."""
@@ -110,7 +115,8 @@ class AddModel(Clickable, ModalScreen[str | None]):
         table.add_column("Model", width=64)
         table.add_column("Size", width=9)
         table.add_column("Downloads", width=10)
-        table.add_column("Support")
+        table.add_column("Adapter", width=18)
+        table.add_column("Runtime", width=10)
 
     def note(self, text: str) -> None:
         self.query_one("#note", Static).update(text)
@@ -162,11 +168,14 @@ class AddModel(Clickable, ModalScreen[str | None]):
         table.clear()
         self.supported = set()
         for hit in hits:
-            support = f"✓ {hit.family}" if hit.family else "✗ unsupported"
+            # A family that runs the model gets the runtime of this variant's weight file; a repo none runs
+            # keeps the plain no and no runtime, so it reads unpickable.
             downloads = count(hit.downloads)
+            adapter = f"✓ {hit.family}" if hit.family else "✗ unsupported"
             for variant in quants.get(hit.repo_id, []):
+                runs = runtime(variant.name) if hit.family else ""
                 size = human(variant.size) if hit.repo_id in sized else "…"
-                table.add_row(variant.name, size, downloads, support, key=variant.name)
+                table.add_row(variant.name, size, downloads, adapter, runs, key=variant.name)
                 if hit.family:
                     self.supported.add(variant.name)
         if table.row_count:
