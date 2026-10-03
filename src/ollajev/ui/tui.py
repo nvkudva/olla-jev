@@ -51,7 +51,7 @@ DataTable > .datatable--hover { background: $boost; }
 #status.error { color: $error; text-align: left; }
 #status.busy { color: $text; text-align: left; }
 #keys { height: 1; padding: 0 1; margin-top: 1; background: $panel; }
-#keys Button { width: auto; min-width: 0; padding: 0 1; margin-right: 1; background: $boost; }
+#keys Button { width: 14; min-width: 0; padding: 0 1; margin-right: 1; background: $boost; }
 #keys Button:hover { background: $primary 40%; }
 
 ModalScreen { align: center middle; background: $background 60%; }
@@ -64,7 +64,7 @@ ModalScreen { align: center middle; background: $background 60%; }
 .dialog Input, .dialog Select { margin-bottom: 1; }
 .dialog TextArea { height: 6; margin-bottom: 1; }
 .buttons { height: auto; margin-top: 1; align-horizontal: right; }
-.buttons Button { width: auto; min-width: 0; padding: 0 1; margin-left: 1; background: $boost; }
+.buttons Button { width: 14; min-width: 0; padding: 0 1; margin-left: 1; background: $boost; }
 .buttons Button:hover { background: $primary 40%; }
 .buttons Button.-primary { background: $primary; }
 .buttons Button.-error { background: $error 70%; }
@@ -74,6 +74,7 @@ ModalScreen { align: center middle; background: $background 60%; }
 #results { height: 20; }
 """
 
+ROW_BUTTON_WIDTH = 10  # every button in the list is this wide, so they line up in columns
 LANGUAGE_SHORT = {"English": "en", "Multilingual": "multi", "100+ languages": "100+"}
 
 
@@ -115,7 +116,7 @@ KEY_BAR = [
     ("r", "Ask", "ask"),
     ("d", "Default", "set_default"),
     ("i", "Info", "info"),
-    ("n", "Add model", "add"),
+    ("n", "Add", "add"),
     ("/", "Filter", "filter"),
     ("?", "Help", "help"),
     ("q", "Quit", "quit_app"),
@@ -346,17 +347,18 @@ class Models(App[bool]):
 
         def button(label: str, action: str, colour: str) -> Text:
             style = f"bold {colour} on {panel}"
-            return Text.from_markup(f"[{style}][@click=app.on_row({name!r}, {action!r})] {label} [/][/]")
+            centred = label.center(ROW_BUTTON_WIDTH)
+            return Text.from_markup(f"[{style}][@click=app.on_row({name!r}, {action!r})]{centred}[/][/]")
 
         if not on_disk:
             return button("Download", "pull", self.colour("accent"))
-        stop_colour = self.colour("foreground") if is_loaded else f"dim {self.colour('foreground')}"
         actions = Text()
         actions.append(button("Serve", "serve_model", self.colour("success")))
         actions.append(" ")
-        actions.append(button("Stop", "unload", stop_colour))
-        actions.append(" ")
         actions.append(button("Delete", "remove", self.colour("error")))
+        if is_loaded:  # Stop only means something while the model is in memory
+            actions.append(" ")
+            actions.append(button("Stop", "unload", self.colour("foreground")))
         return actions
 
     async def action_on_row(self, name: str, action: str) -> None:

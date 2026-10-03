@@ -336,7 +336,8 @@ def test_row_actions_offer_download_until_on_disk(app):
         return [word for word in text.plain.split() if word.isalpha()]
 
     assert labels(app.row_actions("a/b", on_disk=False, is_loaded=False)) == ["Download"]
-    assert labels(app.row_actions("a/b", on_disk=True, is_loaded=True)) == ["Serve", "Stop", "Delete"]
+    assert labels(app.row_actions("a/b", on_disk=True, is_loaded=True)) == ["Serve", "Delete", "Stop"]
+    assert labels(app.row_actions("a/b", on_disk=True, is_loaded=False)) == ["Serve", "Delete"]
 
 
 @pytest.mark.parametrize(
