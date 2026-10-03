@@ -161,6 +161,7 @@ def test_gguf_quant_selection_follows_ollama():
     assert pick_gguf(FILES, "m-BF16.gguf") == "m-BF16.gguf"
     assert pick_gguf(["m-Q8_0.gguf", "m-Q5_K_M.gguf"], None) == "m-Q5_K_M.gguf"
     assert pick_gguf(["m_f16.gguf", "m_ud_q4_k_m.gguf"], "Q4_K_M") == "m_ud_q4_k_m.gguf"
+    assert pick_gguf(["m.mmproj-Q8_0.gguf", "m.Q8_0.gguf"], "Q8_0") == "m.Q8_0.gguf"
     with pytest.raises(ValueError):
         pick_gguf(FILES, "Q2_K")
 

@@ -12,7 +12,7 @@ from huggingface_hub import scan_cache_dir as _scan_cache_dir
 from huggingface_hub.errors import CacheNotFound, LocalEntryNotFoundError, RepositoryNotFoundError
 from huggingface_hub.utils import filter_repo_objects
 
-from . import config
+from . import config, names
 from .adapters import Family, detect
 from .names import Ref, parse, pick_gguf, quant_of
 
@@ -191,7 +191,7 @@ def _family(repo_id: str, files: list[str], base_models: dict | None = None) -> 
         return detect(repo_id, files)
     except LookupError:
         pass
-    if not any(f.lower().endswith(".gguf") for f in files):
+    if not names.ggufs(files):
         return None
     for base_id in _quantized_from(base_models):
         family = _family(base_id, list(_repo_files(base_id)))
@@ -255,7 +255,7 @@ def _variants(
 ) -> list[Variant]:
     """copy: the weights come from this repo and the config files from its base, so only the weights count."""
     files = list(sizes)
-    ggufs = [f for f in files if f.lower().endswith(".gguf")]
+    ggufs = names.ggufs(files)
     quants = [quant_of(f) for f in ggufs]
     tags = [q if q and quants.count(q) == 1 else f.rsplit("/", 1)[-1] for f, q in zip(ggufs, quants, strict=True)]
     found = []
@@ -271,7 +271,7 @@ def _variants(
 
 
 def _pick(ref: Ref, files: list[str]) -> str | None:
-    if any(f.lower().endswith(".gguf") for f in files):
+    if names.ggufs(files):
         return pick_gguf(files, ref.tag)
     if ref.tag:
         raise ValueError(f"{ref.repo_id} has no quantized files; drop ':{ref.tag}'")

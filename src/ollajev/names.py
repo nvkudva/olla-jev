@@ -55,22 +55,28 @@ def quant_of(filename: str) -> str | None:
     return m.group(1).upper() if m else None
 
 
+def ggufs(files: list[str]) -> list[str]:
+    """The model weight files among `files`: `.gguf` files except vision projectors (`mmproj`), which no family
+    loads as a model."""
+    return [f for f in files if f.lower().endswith(".gguf") and "mmproj" not in f.rsplit("/", 1)[-1].lower()]
+
+
 def pick_gguf(files: list[str], tag: str | None) -> str:
     """The one .gguf file `tag` names in a repo's file list, or the default quant when tag is None."""
-    ggufs = [f for f in files if f.lower().endswith(".gguf")]
-    if not ggufs:
+    weights = ggufs(files)
+    if not weights:
         raise ValueError("repo has no .gguf files")
     if tag is None:
-        by_quant = {quant_of(f): f for f in ggufs}
+        by_quant = {quant_of(f): f for f in weights}
         for q in QUANT_PREFERENCE:
             if q in by_quant:
                 return by_quant[q]
-        return sorted(ggufs, key=lambda f: f.lower())[0]
+        return sorted(weights, key=lambda f: f.lower())[0]
     if tag.lower().endswith(".gguf"):
-        matches = [f for f in ggufs if f.rsplit("/", 1)[-1].lower() == tag.lower()]
+        matches = [f for f in weights if f.rsplit("/", 1)[-1].lower() == tag.lower()]
     else:
-        matches = [f for f in ggufs if quant_of(f) == tag.upper()]
+        matches = [f for f in weights if quant_of(f) == tag.upper()]
     if len(matches) != 1:
-        available = ", ".join(sorted({quant_of(f) or f for f in ggufs}))
+        available = ", ".join(sorted({quant_of(f) or f for f in weights}))
         raise ValueError(f"no single file matches {tag!r}; available: {available}")
     return matches[0]

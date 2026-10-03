@@ -11,7 +11,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.screen import ModalScreen
-from textual.widgets import DataTable, Footer, Header, Input, Rule, Select, Static, TextArea
+from textual.widgets import DataTable, Footer, Header, Input, Select, Static, TextArea
 
 from .. import client, config, service, store
 from ..catalog import CATALOG
@@ -36,10 +36,8 @@ ModalScreen { align: center middle; background: $background 60%; }
 .dialog Input, .dialog Select { margin-bottom: 1; }
 .dialog TextArea { height: 6; margin-bottom: 1; }
 #answers { height: auto; max-height: 12; }
-.wide { width: 100; }
-#repos { height: 12; }
-#variants { height: 8; }
-.wide Rule { margin: 0; color: $primary; }
+.wide { width: 112; }
+#results { height: 20; }
 """
 
 
@@ -72,33 +70,29 @@ def human(size: float, units: tuple[str, ...] = ("B", "KB", "MB", "GB", "TB")) -
 
 
 class AddModel(ModalScreen[str | None]):
-    """Search Hugging Face, pick a repo, then pick one of its quants. Returns the name `pull` takes."""
+    """Search Hugging Face and list every quant of every matching repo in one table. Returns the name `pull`
+    takes."""
 
     BINDINGS: ClassVar = [("escape", "cancel", "Cancel")]
 
     def __init__(self) -> None:
         super().__init__()
-        self.hits: list[store.Hit] = []
-        self.found: dict[str, list[store.Variant]] = {}
+        self.supported: set[str] = set()
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog wide"):
             yield Static("Add a model from Hugging Face", classes="title")
             yield Input(placeholder="search words, user/repo or a huggingface.co link", id="query")
-            yield DataTable(id="repos", cursor_type="row")
-            yield Rule()
-            yield DataTable(id="variants", cursor_type="row")
+            yield DataTable(id="results", cursor_type="row")
             yield Static("", id="note")
-            yield Static("type to search · enter pick · tab switch list · esc cancel", classes="hint")
+            yield Static("type to search · enter pick · esc cancel", classes="hint")
 
     def on_mount(self) -> None:
-        repos = self.query_one("#repos", DataTable)
-        repos.add_column("Model", width=56)
-        repos.add_column("Downloads", width=10)
-        repos.add_column("Support")
-        variants = self.query_one("#variants", DataTable)
-        variants.add_column("Quant", width=40)
-        variants.add_column("Download", width=10)
+        table = self.query_one("#results", DataTable)
+        table.add_column("Model", width=64)
+        table.add_column("Size", width=9)
+        table.add_column("Downloads", width=10)
+        table.add_column("Support")
 
     def note(self, text: str) -> None:
         self.query_one("#note", Static).update(text)
@@ -108,64 +102,52 @@ class AddModel(ModalScreen[str | None]):
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         self.search(event.value.strip(), delay=0)
-        self.query_one("#repos", DataTable).focus()
+        self.query_one("#results", DataTable).focus()
 
     @work(exclusive=True, group="search")
     async def search(self, query: str, delay: float) -> None:
         await asyncio.sleep(delay)
-        repos = self.query_one("#repos", DataTable)
         if not query:
             return
         self.note("Searching…")
         try:
-            hits = await asyncio.to_thread(store.search, query)
+            hits = await asyncio.to_thread(store.search, query, 25)
+            self.note(f"Reading the quants of {len(hits)} models…")
+            found = await asyncio.gather(*(asyncio.to_thread(variants, h.repo_id) for h in hits))
         except Exception as exc:
             log.exception("search failed")
             self.note(f"error: {exc}")
             return
-        self.hits = hits
-        repos.clear()
-        self.query_one("#variants", DataTable).clear()
-        for h in hits:
-            support = f"✓ {h.family}" if h.family else "✗ unsupported"
-            repos.add_row(h.repo_id, human(h.downloads, ("", "k", "M", "B")).replace(" ", ""), support, key=h.repo_id)
-        self.note("" if hits else "No models found")
-
-    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
-        if event.data_table.id == "repos" and event.row_key.value:
-            self.show(event.row_key.value)
-
-    @work(exclusive=True, group="variants")
-    async def show(self, repo_id: str) -> None:
-        await asyncio.sleep(0.2)
-        table = self.query_one("#variants", DataTable)
+        table = self.query_one("#results", DataTable)
         table.clear()
-        if repo_id not in self.found:
-            self.note(f"Reading {repo_id} …")
-            try:
-                self.found[repo_id] = await asyncio.to_thread(store.variants, repo_id)
-            except Exception as exc:
-                log.exception("could not read %s", repo_id)
-                self.note(f"error: {exc}")
-                return
-        for v in self.found[repo_id]:
-            table.add_row(v.label, human(v.size), key=v.name)
-        hit = next((h for h in self.hits if h.repo_id == repo_id), None)
-        self.note("" if hit and hit.family else "ollajev has no adapter for this model; it cannot be added")
+        self.supported = set()
+        for h, vs in zip(hits, found, strict=True):
+            support = f"✓ {h.family}" if h.family else "✗ unsupported"
+            downloads = human(h.downloads, ("", "k", "M", "B")).replace(" ", "")
+            for v in vs:
+                table.add_row(v.name, human(v.size), downloads, support, key=v.name)
+                if h.family:
+                    self.supported.add(v.name)
+        self.note("" if hits else "No models found")
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         event.stop()  # the manager behind this dialog downloads on its own row selection
-        if event.data_table.id == "repos":
-            self.query_one("#variants", DataTable).focus()
-            return
-        repo_id = event.row_key.value.partition(":")[0] if event.row_key.value else ""
-        if not any(h.repo_id == repo_id and h.family for h in self.hits):
-            self.notify("This model is not supported", severity="warning")
+        if event.row_key.value not in self.supported:
+            self.notify("ollajev has no adapter for this model", severity="warning")
             return
         self.dismiss(event.row_key.value)
 
     def action_cancel(self) -> None:
         self.dismiss(None)
+
+
+def variants(repo_id: str) -> list[store.Variant]:
+    """A repo's quants, or none when Hugging Face cannot list them; one failing repo must not fail a search."""
+    try:
+        return store.variants(repo_id)
+    except Exception:
+        log.exception("could not read %s", repo_id)
+        return []
 
 
 class Confirm(ModalScreen[bool]):
@@ -331,6 +313,7 @@ class Models(App[bool]):
         self.names: list[str] = []
         self.busy = False
         self.local: tuple[str, Any, Any] | None = None  # model, ask, release: loaded in this process
+        self.quants: dict[str, list[store.Variant]] = {}  # catalog GGUF repo -> all its quants on Hugging Face
 
     # ---- layout and data --------------------------------------------------------------------------
 
@@ -349,6 +332,15 @@ class Models(App[bool]):
         table.add_column("Status")
         self.reload()
         self.say("Enter downloads a model and makes it the default. Press s to serve it.")
+        self.load_quants()
+
+    @work(group="quants")
+    async def load_quants(self) -> None:
+        """List every quant of the catalog's GGUF repos, not only the curated ones. Offline, the list stays as is."""
+        repos = list(dict.fromkeys(e.name.partition(":")[0] for e in CATALOG if ":" in e.name))
+        found = await asyncio.gather(*(asyncio.to_thread(variants, repo) for repo in repos))
+        self.quants = {repo: vs for repo, vs in zip(repos, found, strict=True) if vs}
+        self.reload()
 
     def say(self, text: str) -> None:
         self.query_one("#status", Static).update(text)
@@ -365,7 +357,17 @@ class Models(App[bool]):
         have = {m["name"]: m for m in admin.tags()}
         default = canonical_or(default_model())
         loaded = self.loaded()
-        rows = [(e.name, e.name in have, f"{e.size_gb:.1f} GB", e.languages) for e in CATALOG]
+        rows = []
+        for i, e in enumerate(CATALOG):
+            rows.append((e.name, e.name in have, f"{e.size_gb:.1f} GB", e.languages))
+            repo = e.name.partition(":")[0]
+            if repo in self.quants and all(n.name.partition(":")[0] != repo for n in CATALOG[i + 1 :]):
+                curated = {n.name for n in CATALOG}
+                rows += [
+                    (v.name, v.name in have, human(v.size), e.languages)
+                    for v in self.quants[repo]
+                    if v.name not in curated
+                ]
         listed = {r[0] for r in rows}
         rows += [
             (name, True, f"{m['size'] / 1e9:.1f} GB", m["details"]["family"])
