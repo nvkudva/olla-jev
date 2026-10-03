@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
+import subprocess
 import sys
 import threading
 import time
@@ -15,7 +17,8 @@ from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Button, DataTable, Footer, Header, Static
+from textual.containers import Horizontal
+from textual.widgets import DataTable, Footer, Static
 
 from .. import client, config, service, store
 from ..catalog import CATALOG
@@ -31,31 +34,58 @@ except ImportError:  # Windows: no termios, and its console needs none of this
 log = logging.getLogger(__name__)
 
 CSS = """
-Screen { background: $surface; }
-Header { background: $surface; color: $text; }
+Screen { background: $background; }
+#brand { height: 1; padding: 0 1; background: $panel; }
+#brand-name { width: 1fr; text-style: bold; color: $accent; }
+#server-pill { width: auto; }
 DataTable { height: 1fr; background: $surface; padding: 0 1; }
-#actions { height: 1; padding: 0 1; margin-top: 1; }
-.buttons { height: auto; margin-top: 1; }
-.buttons Button { width: auto; min-width: 0; padding: 0 1; margin-right: 1; background: $boost; }
-.buttons Button:hover { background: $primary 40%; }
-.buttons Button.-primary { background: $primary; }
-.buttons Button.-success { background: $success 70%; }
-.buttons Button.-error { background: $error 70%; }
-.buttons .hint { width: 1fr; margin-top: 0; }
 DataTable > .datatable--header { background: $surface; color: $text-muted; text-style: bold; }
-#status { height: 1; padding: 0 2; margin-bottom: 1; color: $text-muted; }
-Footer { background: $surface; }
+DataTable > .datatable--cursor { background: $primary 30%; text-style: bold; }
+DataTable > .datatable--hover { background: $boost; }
+#empty { height: 1fr; content-align: center middle; color: $text-muted; background: $surface; display: none; }
+#status { height: 1; padding: 0 1; color: $text-muted; text-align: right; }
+#status.error { color: $error; text-align: left; }
+#status.busy { color: $text; text-align: left; }
+Footer { background: $panel; }
 
 ModalScreen { align: center middle; background: $background 60%; }
-.dialog { width: 68; max-width: 96%; height: auto; padding: 1 2; background: $panel; border: round $primary; }
-.title { text-style: bold; margin-bottom: 1; }
+.dialog {
+    width: 68; max-width: 96%; height: auto; max-height: 90%; padding: 1 2; background: $panel;
+    border: round $primary; border-title-align: left; border-title-style: bold; border-title-color: $text;
+}
+.dialog.danger { border: round $error; }
 .hint { color: $text-muted; margin-top: 1; }
 .dialog Input, .dialog Select { margin-bottom: 1; }
 .dialog TextArea { height: 6; margin-bottom: 1; }
+.buttons { height: auto; margin-top: 1; align-horizontal: right; }
+.buttons Button { width: auto; min-width: 0; padding: 0 1; margin-left: 1; background: $boost; }
+.buttons Button:hover { background: $primary 40%; }
+.buttons Button.-primary { background: $primary; }
+.buttons Button.-error { background: $error 70%; }
+.buttons .hint { width: 1fr; margin-top: 0; }
 #answers-box { height: auto; max-height: 14; }
 .wide { width: 112; }
 #results { height: 20; }
 """
+
+LANGUAGE_SHORT = {"English": "en", "Multilingual": "multi", "100+ languages": "100+"}
+
+
+def system_theme() -> str:
+    """textual-light or textual-dark, from the terminal's colours when it says, else the OS appearance."""
+    colours = os.environ.get("COLORFGBG", "")  # "15;0": foreground 15 on background 0
+    background = colours.rpartition(";")[2]
+    if background.isdigit():
+        return "textual-light" if int(background) in (7, 15) else "textual-dark"
+    if sys.platform == "darwin":
+        try:
+            result = subprocess.run(
+                ["/usr/bin/defaults", "read", "-g", "AppleInterfaceStyle"], capture_output=True, text=True, timeout=1
+            )
+        except (OSError, subprocess.SubprocessError):
+            return "textual-dark"
+        return "textual-dark" if result.stdout.strip() == "Dark" else "textual-light"
+    return "textual-dark"
 
 
 class NoWaitExecutor(ThreadPoolExecutor):
@@ -68,30 +98,31 @@ class NoWaitExecutor(ThreadPoolExecutor):
 
 class Row(NamedTuple):
     name: str  # what pull, rm and the config call it
-    label: str  # what the Model column shows
+    label: Text  # what the Model column shows
     size: str
+    estimated: bool  # the size is the catalog's or Hugging Face's figure, not the files on disk
     languages: str  # the catalog's languages, or the family of a model outside the catalog
 
 
 class Models(App[bool]):
     TITLE = "ollajev"
     CSS = CSS
-    # The footer shows the everyday keys; ? lists them all, so the footer fits a narrow terminal.
+    # The footer shows the keys the row links do not cover; ? lists them all.
     BINDINGS: ClassVar = [
-        Binding("p", "pull", "Pull"),
         Binding("r", "ask", "Ask"),
+        Binding("d", "set_default", "Default"),
+        Binding("i", "info", "Info"),
         Binding("n", "add", "Add"),
-        Binding("x", "remove", "Remove"),
-        Binding("s", "serve", "Serve"),
+        Binding("slash", "filter", "Filter"),
         Binding("question_mark", "help", "Help"),
         Binding("q", "quit_app", "Quit"),
-        Binding("d", "set_default", "Default", show=False),
+        Binding("p", "pull", "Pull", show=False),
+        Binding("x", "remove", "Remove", show=False),
+        Binding("s", "serve", "Serve", show=False),
         Binding("u", "unload", "Unload", show=False),
         Binding("a", "alias", "Alias", show=False),
-        Binding("i", "info", "Info", show=False),
         Binding("o", "options", "Options", show=False),
         Binding("b", "service", "Service", show=False),
-        Binding("slash", "filter", "Filter", show=False),
         Binding("ctrl+r", "reload_list", "Refresh", show=False),
         Binding("e", "last_error", "Error", show=False),
         Binding("escape", "cancel_job", "Cancel", show=False),
@@ -101,8 +132,11 @@ class Models(App[bool]):
         super().__init__()
         self.names: list[str] = []
         self.sizes: dict[str, str] = {}  # model name -> the size shown in its row
-        self.summary = ""  # the idle status line: default, loaded, disk use, server
+        self.states: dict[str, tuple[bool, bool]] = {}  # model name -> (on disk, loaded), for its action links
+        self.highlighted: str | None = None  # the row that shows its action links
+        self.summary = ""  # the idle status line: disk use and filter
         self.filter_text = ""  # `/` shows only the models whose name contains it
+        self.fetching_quants = False
         self.busy = False
         self.cancel = threading.Event()  # set by Esc; a download in progress stops at its next update
         self.downloading = False  # only downloads can be cancelled; loads and asks run to the end
@@ -112,67 +146,77 @@ class Models(App[bool]):
         # One load at a time: two Ask dialogs opened in a row must not hold two models in memory.
         self.load_lock = threading.Lock()
         self.quants: dict[str, list[store.Variant]] = {}  # catalog GGUF repo -> all its quants on Hugging Face
+        self.snapshot_cache: tuple[dict[str, Any], str, bool, set[str]] | None = None  # to redraw on a theme change
 
     # ---- layout and data --------------------------------------------------------------------------
 
     def compose(self) -> ComposeResult:
-        yield Header(icon="")
-        yield DataTable(cursor_type="row", zebra_stripes=True)
-        yield dialogs.buttons(
-            ("Ask", "ask", "default"),
-            ("Make default", "set_default", "default"),
-            ("Info", "info", "default"),
-            ("Add model…", "add", "primary"),
-            ("Help", "help", "default"),
-            row_id="actions",
-        )
+        with Horizontal(id="brand"):
+            yield Static("🦒 ollajev", id="brand-name")
+            yield Static("", id="server-pill")
+        yield DataTable(cursor_type="row")
+        yield Static("", id="empty")
         yield Static("", id="status")
         yield Footer()
 
-    async def on_button_pressed(self, event: Button.Pressed) -> None:
-        """A button acts on the selected row, like its key; then the list takes the keys again."""
-        await dialogs.Clickable.on_button_pressed(self, event)  # type: ignore[arg-type]
-        self.query_one(DataTable).focus()
-
     def on_mount(self) -> None:
         asyncio.get_running_loop().set_default_executor(NoWaitExecutor())
-        table = self.query_one(DataTable)
-        table.add_column("Disk", width=4)
-        table.add_column("Model", width=44)
-        table.add_column("Size", width=9)
-        table.add_column("Languages", width=16)
-        table.add_column("Status", width=20)
-        table.add_column("Actions")
+        self.theme = config.load().get("theme") or system_theme()
+        self.theme_changed_signal.subscribe(self, self.on_theme_change)
         self.reload()
         self.say_idle()
         self.load_quants()
         self.set_interval(3, self.auto_refresh)
 
+    def on_theme_change(self, theme: Any) -> None:
+        """Redraw the rows in the new theme's colours. A theme picked with ctrl+p is kept for the next start;
+        picking the one that matches the system goes back to following the system."""
+        with config.edit() as data:
+            if theme.name == system_theme():
+                data.pop("theme", None)
+            else:
+                data["theme"] = theme.name
+        if self.snapshot_cache:
+            self.render_list(*self.snapshot_cache)
+
+    def colour(self, role: str) -> str:
+        """A colour of the current theme (success, warning, error, accent, primary) as a Rich colour."""
+        value = getattr(self.current_theme, role, None)
+        return str(value) if value else "default"
+
     @work(group="quants")
     async def load_quants(self) -> None:
         """List every quant of the catalog's GGUF repos, not only the curated ones. Offline, the list stays as is."""
+        self.fetching_quants = True
+        self.say_idle()
         repos = list(dict.fromkeys(e.name.partition(":")[0] for e in CATALOG if ":" in e.name))
         found = await asyncio.gather(*(asyncio.to_thread(dialogs.variants, repo) for repo in repos))
         self.quants = {repo: vs for repo, vs in zip(repos, found, strict=True) if vs}
+        self.fetching_quants = False
         self.reload()
 
-    def say(self, text: str) -> None:
-        self.query_one("#status", Static).update(text)
+    def say(self, text: str, kind: str = "busy") -> None:
+        status = self.query_one("#status", Static)
+        status.set_classes(kind)
+        status.update(text)
 
     def say_idle(self) -> None:
-        """The status line between jobs: the last error until a job succeeds, else the main hint."""
+        """The status line between jobs: the last error until a job succeeds, else disk use, filter and quants."""
         if self.last_error:
             first_line = self.last_error.splitlines()[0]
-            self.say(f"! {first_line}  (e for details)")
-        else:
-            self.say(self.summary)
+            self.say(f"! {first_line}  ·  e for details", "error")
+            return
+        summary = self.summary
+        if self.fetching_quants:
+            summary = f"fetching quants…  ·  {summary}"
+        self.say(summary, "idle")
 
     def action_help(self) -> None:
-        self.push_screen(dialogs.Info("Keys", KEYS_HELP))
+        self.push_screen(dialogs.Info("Keys", keys_help(self.colour("accent"))))
 
     def action_last_error(self) -> None:
         if self.last_error:
-            self.push_screen(dialogs.Info("Last error", self.last_error))
+            self.push_screen(dialogs.Info("Last error", self.last_error, danger=True))
         else:
             self.notify("No errors so far")
 
@@ -203,48 +247,98 @@ class Models(App[bool]):
         self.call_from_thread(self.render_list, *data)
 
     def render_list(self, have: dict[str, Any], default: str, server_up: bool, loaded: set[str]) -> None:
+        self.snapshot_cache = (have, default, server_up, loaded)
         rows = self.list_rows(have)
         if self.filter_text:
             rows = [row for row in rows if self.filter_text.lower() in row.name.lower()]
         table = self.query_one(DataTable)
-        keep = self.names[table.cursor_row] if self.names and table.row_count else None
-        table.clear()
-        self.names = []
-        self.sizes = {}
+        keep = self.selected()
+        table.clear(columns=True)
+        model_width = min(50, max([len(row.label) for row in rows] + [12]))
+        table.add_column("", width=3, key="state")
+        table.add_column("Model", width=model_width, key="model")
+        table.add_column(Text("Size", justify="right"), width=8, key="size")
+        table.add_column("Lang", width=7, key="lang")
+        table.add_column("", key="actions")
+        self.names, self.sizes, self.states = [], {}, {}
         for row in rows:
+            on_disk, is_loaded = row.name in have, row.name in loaded
             self.sizes[row.name] = row.size
-            markers = Text()
-            if row.name == default:
-                markers.append("★ default  ", style="bold yellow")
-            if row.name in loaded:
-                markers.append("● loaded", style="bold green")
-            disk = Text("✓", style="green") if row.name in have else ""
-            actions = self.row_actions(row.name, row.name in have, row.name in loaded)
-            table.add_row(disk, row.label, row.size, row.languages, markers, actions, key=row.name)
+            self.states[row.name] = (on_disk, is_loaded)
+            size = Text(row.size, justify="right", style="dim italic" if row.estimated else "")
+            language = Text(LANGUAGE_SHORT.get(row.languages, row.languages), style="dim")
+            table.add_row(
+                self.state_glyphs(row.name == default, is_loaded, on_disk),
+                row.label,
+                size,
+                language,
+                self.row_hint(on_disk),
+                key=row.name,
+            )
             self.names.append(row.name)
+        table.display = bool(rows)
+        empty = self.query_one("#empty", Static)
+        empty.display = not rows
+        empty.update(f"No models match '{self.filter_text}'  ·  / to change it, esc to clear it")
+        self.highlighted = None
         if keep in self.names:
             table.move_cursor(row=self.names.index(keep))
-        self.sub_title = f"server running at {client.server_url()}" if server_up else "server not running"
-        self.summary = self.describe(default, loaded, have, server_up)
+        if self.names:
+            self.show_row_actions(self.selected())
+        self.show_server(server_up)
+        self.summary = self.describe(have)
         if not self.busy:
             self.say_idle()
 
-    @staticmethod
-    def row_actions(name: str, downloaded: bool, loaded: bool) -> Text:
-        """Clickable links for one row: Download before it is on disk, then Serve, Stop and Delete."""
+    def state_glyphs(self, is_default: bool, is_loaded: bool, on_disk: bool) -> Text:
+        """★ the default, ● loaded in memory, ✓ on disk (shown when neither of the others is)."""
+        glyphs = Text()
+        if is_default:
+            glyphs.append("★", style=f"bold {self.colour('warning')}")
+        if is_loaded:
+            glyphs.append("●", style=f"bold {self.colour('success')}")
+        if not glyphs and on_disk:
+            glyphs.append("✓", style="dim")
+        return glyphs
+
+    def show_server(self, server_up: bool) -> None:
+        pill = self.query_one("#server-pill", Static)
+        if server_up:
+            pill.update(Text(f"● serving {client.server_url()}", style=self.colour("success")))
+        else:
+            pill.update(Text("○ server off", style="dim"))
+
+    def row_hint(self, on_disk: bool) -> Text:
+        """What a row shows when it is not highlighted: one dim glyph for its main action."""
+        return Text("▶" if on_disk else "↓", style="dim")
+
+    def row_actions(self, name: str, on_disk: bool, is_loaded: bool) -> Text:
+        """Clickable links for the highlighted row: Download before it is on disk, then Serve, Stop and Delete."""
 
         def link(label: str, action: str, style: str) -> Text:
             return Text.from_markup(f"[{style}][@click=app.on_row({name!r}, {action!r})] {label} [/][/]")
 
-        if not downloaded:
-            return link("↓ Download", "pull", "bold dodger_blue1")
+        if not on_disk:
+            return link("↓ Download", "pull", f"bold {self.colour('accent')}")
         actions = Text()
-        actions.append(link("▶ Serve", "serve_model", "bold green"))
-        actions.append(" ")
-        actions.append(link("■ Stop", "unload", "bold" if loaded else "dim"))
-        actions.append(" ")
-        actions.append(link("✕ Delete", "remove", "red"))
+        actions.append(link("▶ Serve", "serve_model", f"bold {self.colour('success')}"))
+        actions.append(link("■ Stop", "unload", "bold" if is_loaded else "dim"))
+        actions.append(link("✕ Delete", "remove", self.colour("error")))
         return actions
+
+    def show_row_actions(self, name: str | None) -> None:
+        """Only the highlighted row shows its links, so the rest of the list stays quiet."""
+        table = self.query_one(DataTable)
+        if self.highlighted in self.states and self.highlighted != name:
+            on_disk, _ = self.states[self.highlighted]
+            table.update_cell(self.highlighted, "actions", self.row_hint(on_disk))
+        if name in self.states:
+            on_disk, is_loaded = self.states[name]
+            table.update_cell(name, "actions", self.row_actions(name, on_disk, is_loaded), update_width=True)
+        self.highlighted = name
+
+    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        self.show_row_actions(event.row_key.value)
 
     async def action_on_row(self, name: str, action: str) -> None:
         """A click on a row's action link: select that row, then run the action as its key would."""
@@ -261,49 +355,45 @@ class Models(App[bool]):
         self.action_serve()
 
     def list_rows(self, have: dict[str, Any]) -> list[Row]:
-        """The catalog, each GGUF repo's other quants indented under its last curated entry, then any other
-        download. Sizes on disk are exact; a size not yet downloaded is an estimate, marked ~."""
+        """The catalog, each GGUF repo's other quants under its last curated entry, then any other download."""
         curated = {entry.name for entry in CATALOG}
         rows = []
         for index, entry in enumerate(CATALOG):
-            rows.append(
-                Row(entry.name, entry.name, self.size_of(entry.name, have, entry.size_gb * 1e9), entry.languages)
-            )
-            repo = entry.name.partition(":")[0]
+            repo, _, quant = entry.name.partition(":")
+            label = Text(repo)
+            if quant:
+                label.append(f":{quant}", style="dim")
+            size, estimated = self.size_of(entry.name, have, entry.size_gb * 1e9)
+            rows.append(Row(entry.name, label, size, estimated, entry.languages))
             later_entries = CATALOG[index + 1 :]
             last_of_repo = all(other.name.partition(":")[0] != repo for other in later_entries)
             if not last_of_repo:
                 continue
-            for variant in self.quants.get(repo, []):
-                if variant.name in curated:
-                    continue
-                label = f"  └ {variant.name.partition(':')[2] or variant.name}"
-                rows.append(Row(variant.name, label, self.size_of(variant.name, have, variant.size), entry.languages))
+            others = [variant for variant in self.quants.get(repo, []) if variant.name not in curated]
+            for position, variant in enumerate(others):
+                branch = "└" if position == len(others) - 1 else "├"
+                label = Text(f"  {branch} {variant.name.partition(':')[2] or variant.name}", style="dim")
+                size, estimated = self.size_of(variant.name, have, variant.size)
+                rows.append(Row(variant.name, label, size, estimated, entry.languages))
         listed = {row.name for row in rows}
         for name, model in have.items():
             if name not in listed:
-                rows.append(Row(name, name, dialogs.human(model["size"]), model["details"]["family"]))
+                rows.append(Row(name, Text(name), dialogs.human(model["size"]), False, model["details"]["family"]))
         return rows
 
     @staticmethod
-    def size_of(name: str, have: dict[str, Any], estimate: float) -> str:
+    def size_of(name: str, have: dict[str, Any], estimate: float) -> tuple[str, bool]:
+        """The size on disk when downloaded, else the estimate, and whether it is one."""
         if name in have:
-            return dialogs.human(have[name]["size"])
-        return "~" + dialogs.human(estimate)
+            return dialogs.human(have[name]["size"]), False
+        return dialogs.human(estimate), True
 
-    def describe(self, default: str, loaded: set[str], have: dict[str, Any], server_up: bool) -> str:
+    def describe(self, have: dict[str, Any]) -> str:
         on_disk = sum(model["size"] for model in have.values())
-        server = client.server_url() if server_up else "not running"
-        parts = [
-            f"default {default}",
-            f"loaded {', '.join(sorted(loaded)) or 'none'}",
-            f"{len(have)} on disk ({dialogs.human(on_disk)})",
-            f"server {server}",
-        ]
+        parts = [f"{len(have)} on disk · {dialogs.human(on_disk)}"]
         if self.filter_text:
-            parts.append(f"filter '{self.filter_text}'")
-        parts.append("? keys")
-        return " · ".join(parts)
+            parts.append(f"filter '{self.filter_text}' (esc clears)")
+        return "  ·  ".join(parts)
 
     @work
     async def action_filter(self) -> None:
@@ -388,6 +478,9 @@ class Models(App[bool]):
             self.say("Cancelling …")
         elif self.busy:
             self.notify("Only downloads can be cancelled", severity="warning")
+        elif self.filter_text:
+            self.filter_text = ""
+            self.reload()
 
     async def fetch(self, name: str) -> store.Resolved | None:
         resolved = await asyncio.to_thread(lambda: store.resolve(lookup(name)))
@@ -634,24 +727,58 @@ class Models(App[bool]):
         self.action_quit_app()
 
 
-KEYS_HELP = """\
-enter   download if needed, make it the default   (pull + default)
-d       make a downloaded model the default
-p       download only                              (pull)
-r       ask the model questions                    (run)
-n       add any Hugging Face repo by name          (pull)
-x       delete the download                        (rm)
-u       unload it from memory                      (stop)
-a       give it a short name                       (cp)
-i       family, commit, limits, path               (show)
-/       filter the list by name
-ctrl+r  refresh the list
-o       device, address and port for the server
-b       install or remove the background service   (service)
-s       start the server and leave the manager     (serve)
-e       the last error in full
-esc     cancel a download
-q       quit"""
+# (key, what it does, the CLI command it matches), in three groups.
+KEYS: list[tuple[str, list[tuple[str, str, str]]]] = [
+    (
+        "Models",
+        [
+            ("enter", "download if needed, make it the default", "pull"),
+            ("d", "make a downloaded model the default", ""),
+            ("p", "download only", "pull"),
+            ("r", "ask the model questions", "run"),
+            ("i", "family, commit, limits, path", "show"),
+            ("u", "unload it from memory", "stop"),
+            ("x", "delete the download", "rm"),
+            ("a", "give it a short name", "cp"),
+            ("n", "add any Hugging Face repo by name", "pull"),
+        ],
+    ),
+    (
+        "Server",
+        [
+            ("s", "start the server and leave the manager", "serve"),
+            ("o", "device, address and port for the server", ""),
+            ("b", "install or remove the background service", "service"),
+        ],
+    ),
+    (
+        "App",
+        [
+            ("/", "filter the list by name; esc clears it", ""),
+            ("ctrl+r", "refresh the list", ""),
+            ("e", "the last error in full", ""),
+            ("esc", "cancel a download", ""),
+            ("ctrl+p", "pick a colour theme", ""),
+            ("q", "quit", ""),
+        ],
+    ),
+]
+
+
+def keys_help(accent: str) -> Text:
+    """The ? screen: keys in the accent colour, the matching CLI command dim. A dim size is an estimate."""
+    help_text = Text()
+    for group, keys in KEYS:
+        help_text.append(f"{group}\n", style="bold")
+        for key, description, command in keys:
+            help_text.append(f"  {key:<8}", style=f"bold {accent}")
+            help_text.append(description)
+            if command:
+                help_text.append(f"  ({command})", style="dim")
+            help_text.append("\n")
+        help_text.append("\n")
+    help_text.append("★ default  ● loaded  ✓ on disk  ·  a dim size is an estimate", style="dim")
+    return help_text
 
 
 # Plain keys (kitty keyboard flags 0), every mouse report mode off, bracketed paste off, cursor shown.

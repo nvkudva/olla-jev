@@ -207,31 +207,34 @@ def test_status_line_and_filter(app):
     async def go():
         async with app.run_test(size=(160, 36)) as pilot:
             status = str(app.query_one("#status").render())
+            pill = str(app.query_one("#server-pill").render())
             await pilot.press("slash")
             await pilot.pause()
             for key in "julia":
                 await pilot.press(key)
             await pilot.press("enter")
             await pilot.pause()
-            return status, list(app.names)
+            return status, pill, list(app.names)
 
-    status, names = asyncio.run(go())
-    assert "default " in status and "on disk" in status and "server not running" in status
+    status, pill, names = asyncio.run(go())
+    assert "on disk" in status and "server off" in pill
     assert names and all("julia" in name.lower() for name in names)
 
 
 def test_auto_refresh_picks_up_changes_made_elsewhere(app):
     from ollajev import config
 
+    target = CATALOG[3].name
+
     async def go():
         async with app.run_test(size=(160, 36)) as pilot:
-            config.update(default_model="someone/else")
+            config.update(default_model=target)
             app.auto_refresh()
             await app.workers.wait_for_complete()
             await pilot.pause()
-            return str(app.query_one("#status").render())
+            return app.query_one(DataTable).get_cell(target, "state").plain
 
-    assert "default someone/else" in asyncio.run(go())
+    assert "★" in asyncio.run(go())
 
 
 def test_enter_in_a_confirm_takes_its_default():
@@ -289,17 +292,20 @@ def test_options_accepts_only_host_names_and_addresses(host, valid):
     assert tui.dialogs.valid_host(host) is valid
 
 
-def test_mouse_buttons_do_what_the_keys_do(app):
+def test_only_the_highlighted_row_shows_its_action_links(app):
     async def go():
-        async with app.run_test(size=(140, 36)) as pilot:
-            await pilot.click("#do-info")
+        async with app.run_test(size=(160, 36)) as pilot:
+            table = app.query_one(DataTable)
+            first, second = app.names[0], app.names[1]
+            before = (table.get_cell(first, "actions").plain, table.get_cell(second, "actions").plain)
+            await pilot.press("down")
             await pilot.pause()
-            opened = type(app.screen).__name__
-            await pilot.click("#do-close")
-            await pilot.pause()
-            return opened, type(app.screen).__name__, type(app.focused).__name__
+            after = (table.get_cell(first, "actions").plain, table.get_cell(second, "actions").plain)
+            return before, after
 
-    assert asyncio.run(go()) == ("Info", "Screen", "DataTable")
+    before, after = asyncio.run(go())
+    assert "Download" in before[0] and before[1].strip() == "↓"
+    assert after[0].strip() == "↓" and "Download" in after[1]
 
 
 def test_confirm_buttons_answer_it():
@@ -332,9 +338,17 @@ def test_row_action_links_select_their_row_and_act(app):
     assert selected == target and screen == "Info"
 
 
-def test_row_actions_offer_download_until_on_disk():
+def test_row_actions_offer_download_until_on_disk(app):
     def labels(text):
         return [word for word in text.plain.split() if word.isalpha()]
 
-    assert labels(tui.Models.row_actions("a/b", downloaded=False, loaded=False)) == ["Download"]
-    assert labels(tui.Models.row_actions("a/b", downloaded=True, loaded=True)) == ["Serve", "Stop", "Delete"]
+    assert labels(app.row_actions("a/b", on_disk=False, is_loaded=False)) == ["Download"]
+    assert labels(app.row_actions("a/b", on_disk=True, is_loaded=True)) == ["Serve", "Stop", "Delete"]
+
+
+@pytest.mark.parametrize(
+    ("colours", "theme"), [("15;0", "textual-dark"), ("0;15", "textual-light"), ("0;7", "textual-light")]
+)
+def test_theme_follows_the_terminal_colours(monkeypatch, colours, theme):
+    monkeypatch.setenv("COLORFGBG", colours)
+    assert tui.system_theme() == theme

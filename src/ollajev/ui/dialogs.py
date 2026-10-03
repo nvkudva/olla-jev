@@ -8,6 +8,7 @@ import logging
 import time
 from typing import Any, ClassVar
 
+from rich.text import Text
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -44,8 +45,8 @@ class Prompt(Clickable, ModalScreen[str | None]):
         self.heading, self.placeholder = title, placeholder
 
     def compose(self) -> ComposeResult:
-        with Vertical(classes="dialog"):
-            yield Static(self.heading, classes="title")
+        with Vertical(classes="dialog") as box:
+            box.border_title = self.heading
             yield Input(placeholder=self.placeholder)
             yield buttons(("OK", "submit", "primary"), ("Cancel", "cancel", "default"))
 
@@ -78,8 +79,8 @@ class AddModel(Clickable, ModalScreen[str | None]):
         self.supported: set[str] = set()
 
     def compose(self) -> ComposeResult:
-        with Vertical(classes="dialog wide"):
-            yield Static("Add a model from Hugging Face", classes="title")
+        with Vertical(classes="dialog wide") as box:
+            box.border_title = "Add a model from Hugging Face"
             yield Input(placeholder="search words, user/repo or a huggingface.co link", id="query")
             yield DataTable(id="results", cursor_type="row")
             yield Static("", id="note")
@@ -176,8 +177,9 @@ class Confirm(Clickable, ModalScreen[bool]):
         self.heading, self.body, self.default = title, body, default
 
     def compose(self) -> ComposeResult:
-        with Vertical(classes="dialog"):
-            yield Static(self.heading, classes="title")
+        # Anything whose safe answer is no (delete, trust code, quit mid-download) gets a red frame.
+        with Vertical(classes="dialog" if self.default else "dialog danger") as box:
+            box.border_title = self.heading
             yield Static(self.body)
             yes_variant = "primary" if self.default else "error"
             yield buttons(("Yes", "yes", yes_variant), ("No", "no", "default"))
@@ -199,13 +201,13 @@ class Confirm(Clickable, ModalScreen[bool]):
 class Info(Clickable, ModalScreen[None]):
     BINDINGS: ClassVar = [("escape,enter,q", "close", "Close")]
 
-    def __init__(self, title: str, body: str) -> None:
+    def __init__(self, title: str, body: str | Text, danger: bool = False) -> None:
         super().__init__()
-        self.heading, self.body = title, body
+        self.heading, self.body, self.danger = title, body, danger
 
     def compose(self) -> ComposeResult:
-        with Vertical(classes="dialog"):
-            yield Static(self.heading, classes="title")
+        with Vertical(classes="dialog danger" if self.danger else "dialog") as box:
+            box.border_title = self.heading
             yield Static(self.body)
             yield buttons(("Close", "close", "primary"))
 
@@ -231,8 +233,8 @@ class Options(Clickable, ModalScreen[dict[str, Any] | None]):
 
     def compose(self) -> ComposeResult:
         saved = config.load()
-        with Vertical(classes="dialog"):
-            yield Static("Server options", classes="title")
+        with Vertical(classes="dialog") as box:
+            box.border_title = "Server options"
             yield Static("Device (auto picks cuda, then mps, then cpu)")
             yield Select(
                 [(d, d) for d in ("auto", "mps", "cuda", "cpu")],
@@ -279,8 +281,8 @@ class Ask(Clickable, ModalScreen[None]):
         self.history: list[str] = []  # earlier answers, newest first, kept while the dialog is open
 
     def compose(self) -> ComposeResult:
-        with Vertical(classes="dialog"):
-            yield Static(f"Ask {self.model}", classes="title")
+        with Vertical(classes="dialog") as box:
+            box.border_title = f"Ask {self.model}"
             yield Static("State")
             yield TextArea(id="state")
             yield Static("Questions, one per line")

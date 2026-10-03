@@ -196,7 +196,7 @@ Run `ollajev <command> --help` for options and an example.
 
 ### Model manager
 
-`ollajev setup` opens one screen for the model commands. Move with the arrow keys or the mouse. Each row's Actions column has clickable links: Download for a model not on disk yet, then Serve, Stop and Delete. The buttons under the list and in every dialog do what these keys do:
+`ollajev setup` opens one screen for the model commands. Move with the arrow keys or the mouse. The highlighted row shows clickable links: Download for a model not on disk yet, then Serve, Stop and Delete. The footer keys and the buttons in every dialog can be clicked too. The keys:
 
 | Key | Same as | What it does |
 |---|---|---|
@@ -219,8 +219,9 @@ Run `ollajev <command> --help` for options and an example.
 | `?` | | list every key |
 | `q` | | quit |
 
-The table marks downloaded models (✓), the default and the loaded ones. The header shows whether a
-server is running.
+The first column marks the default (★), a loaded model (●) and other downloads (✓); a dimmed size is an
+estimate until the model is downloaded. The top bar shows whether a server is running. The colours follow your
+system's light or dark mode; pick another theme with Ctrl+P and it is remembered.
 
 | Command | What it does |
 |---|---|
