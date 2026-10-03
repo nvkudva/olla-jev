@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import logging
 import secrets
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from fastapi import Body, FastAPI, Request
+from fastapi import Body, FastAPI, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -186,15 +187,25 @@ def list_models() -> dict[str, Any]:
 
 
 @app.post("/v1/systemone")
-def system_one(req: Annotated[SystemOneRequest, Body()]) -> Any:
+def system_one(req: Annotated[SystemOneRequest, Body()], response: Response) -> Any:
     questions = {name: _wire(q) for name, q in req.questions.items()}
+    manager = current_manager()
+    requested_at = time.time()
     try:
-        slot, result = current_manager().run(req.model, req.state, questions)
+        started = time.monotonic()
+        manager.get(req.model)  # loads the model when it is not in memory, so the load is timed on its own
+        loaded = time.monotonic()
+        slot, result = manager.run(req.model, req.state, questions)
+        finished = time.monotonic()
         answers = normalize.answers(questions, result["answers"])
     except (NotDownloaded, NotTrusted, NotEnoughMemory) as exc:
         return _model_error(exc)
     except ValueError as exc:
         return _invalid(["body", "questions"], str(exc))
+    response.headers["server-timing"] = _server_timing(
+        load_seconds=loaded - started if slot.loaded_at >= requested_at else None,
+        run_seconds=finished - loaded,
+    )
     usage = result.get("usage") or {}
     return {
         "model": slot.name,
@@ -204,6 +215,16 @@ def system_one(req: Annotated[SystemOneRequest, Body()]) -> Any:
             "output_tokens": int(usage.get("output_tokens", 0)),
         },
     }
+
+
+def _server_timing(load_seconds: float | None, run_seconds: float) -> str:
+    """A Server-Timing header: `load` when this request loaded the model into memory, `run` for the answer itself.
+    A header, so the response body stays exactly the Jev wire format."""
+    parts = []
+    if load_seconds is not None:
+        parts.append(f"load;dur={load_seconds * 1000:.0f}")
+    parts.append(f"run;dur={run_seconds * 1000:.0f}")
+    return ", ".join(parts)
 
 
 app.include_router(admin.router)

@@ -25,6 +25,9 @@ class StubManager:
         self.calls = []
         self.error = None
 
+    def get(self, name, keep_alive=None):
+        return None
+
     def run(self, name, state, questions, keep_alive=None):
         self.calls.append((name, state, questions))
         if self.error:
@@ -40,7 +43,10 @@ class StubManager:
                 }
             else:
                 answers[qid] = {"probabilities": {str(i): 1 / len(q["criteria"]) for i in range(len(q["criteria"]))}}
-        return SimpleNamespace(name="user/model"), {"answers": answers, "usage": {"input_tokens": 3}}
+        slot = SimpleNamespace(name="user/model", loaded_at=self.loaded_at)
+        return slot, {"answers": answers, "usage": {"input_tokens": 3}}
+
+    loaded_at = 0.0  # long ago: the model was already in memory
 
     def loaded(self):
         return []
@@ -374,3 +380,13 @@ def test_model_loads_show_on_the_server_console(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "==> Loading a/b on cpu …" in err
     assert err.count("low memory") == 1
+
+
+def test_server_timing_separates_a_model_load_from_the_answer(client, stub):
+    import time
+
+    already_loaded = ask(client, {"n": {"type": "noul"}}).headers["server-timing"]
+    assert already_loaded.startswith("run;dur=") and "load" not in already_loaded
+    stub.loaded_at = time.time() + 60  # loaded during this request
+    just_loaded = ask(client, {"n": {"type": "noul"}}).headers["server-timing"]
+    assert just_loaded.startswith("load;dur=") and ", run;dur=" in just_loaded

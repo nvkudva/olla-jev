@@ -428,7 +428,8 @@ function turnHeadMarkup(turn, index) {
       <span class="turn-meta">
         ${tokens >= 450 ? html`<span class="turn-warn" title="Content past the 512-token context limit is silently truncated">⚠ near 512-tok limit</span>` : ""}
         <span>${turn.data ? (tokens != null ? `${tokens} tok` : "done") : turn.pending ? "sending…" : "failed"}</span>
-        ${turn.ms != null ? html`<span title="Time from sending the request to its answer, model load included">${turn.ms} ms</span>` : ""}
+        ${turn.loadMs != null ? html`<span title="Loading the model into memory, before this request could run">load ${turn.loadMs} ms</span>` : ""}
+        ${turn.ms != null ? html`<span title="Time the model took to answer">${turn.ms} ms</span>` : ""}
         <div class="seg turn-view" role="group" aria-label="View for request ${index + 1}">
           <button type="button" class="ghost" data-act="turn-view" data-i="${index}" data-view="ui" aria-pressed="true">UI</button>
           <button type="button" class="ghost" data-act="turn-view" data-i="${index}" data-view="json" aria-pressed="false">JSON</button>
@@ -462,6 +463,7 @@ function showReadout(turn) {
   const parts = [];
   if (tokens != null) parts.push(`${tokens} tok`);
   if (turn.ms != null) parts.push(`${turn.ms} ms`);
+  if (turn.loadMs != null) parts.push(`+ load ${turn.loadMs} ms`);
   $("#r-tokens").textContent = parts.join(" · ") || "—";
 }
 
@@ -479,6 +481,17 @@ function renderLog() {
   /* Both views ship in the markup, so a restored turn has to be told which one it shows. */
   log.querySelectorAll(".turn").forEach((el, i) => applyView(el, history[i].view ?? "ui"));
   syncOpen();
+}
+
+/** "load;dur=2710, run;dur=87" -> { load: 2710, run: 87 }. */
+function serverTiming(header) {
+  const timing = {};
+  for (const entry of (header ?? "").split(",")) {
+    const [name, ...params] = entry.trim().split(";");
+    const duration = params.find((param) => param.trim().startsWith("dur="));
+    if (name && duration) timing[name] = Math.round(Number(duration.split("=")[1]));
+  }
+  return timing;
 }
 
 async function ask(request) {
@@ -504,9 +517,12 @@ async function ask(request) {
       body: JSON.stringify(request),
     });
     const body = await res.json();
-    // Round trip as the browser saw it: it includes a model load when the model was not in memory yet.
     const ms = Math.round(performance.now() - started);
-    turn = res.ok ? { request, data: body, at, ms } : { request, error: body.detail ?? `HTTP ${res.status}`, at, ms };
+    // The server splits its time into the model load (only when this request loaded it) and the answer.
+    const timing = serverTiming(res.headers.get("server-timing"));
+    turn = res.ok
+      ? { request, data: body, at, ms: timing.run ?? ms, loadMs: timing.load }
+      : { request, error: body.detail ?? `HTTP ${res.status}`, at, ms };
   } catch (e) {
     turn = { request, error: `Could not reach the server or read its reply (${e.message ?? e}).`, at };
   } finally {
