@@ -17,7 +17,7 @@ def app(tmp_path, monkeypatch):
     monkeypatch.setenv("OLLAJEV_HOME", str(tmp_path))
     monkeypatch.setenv("OLLAJEV_MODELS", str(tmp_path / "models"))
     monkeypatch.setattr(client, "server_running", lambda: False)
-    monkeypatch.setattr(tui, "variants", lambda repo: [])  # offline: the catalog's quants are not listed
+    monkeypatch.setattr(tui.dialogs, "variants", lambda repo: [])  # offline: the catalog's quants are not listed
     return tui.Models()
 
 
@@ -61,12 +61,12 @@ def quants(repo):
 def test_add_model_lists_every_quant_and_returns_the_picked_one(app, monkeypatch):
     hits = [tui.store.Hit("u/ok-GGUF", 1200, "decider"), tui.store.Hit("u/no-GGUF", 5, None)]
     monkeypatch.setattr(tui.store, "search", lambda query, limit: hits)
-    monkeypatch.setattr(tui, "variants", quants)
+    monkeypatch.setattr(tui.dialogs, "variants", quants)
     picked = []
 
     async def go():
         async with app.run_test(size=(120, 36)) as pilot:
-            app.push_screen(tui.AddModel(), picked.append)
+            app.push_screen(tui.dialogs.AddModel(), picked.append)
             await pilot.pause()
             await pilot.press(*"ok", "enter")
             await pilot.pause(0.5)
@@ -82,7 +82,7 @@ def test_add_model_lists_every_quant_and_returns_the_picked_one(app, monkeypatch
 
 
 def test_the_model_list_shows_every_quant_of_a_catalog_gguf_repo(app, monkeypatch):
-    monkeypatch.setattr(tui, "variants", quants)
+    monkeypatch.setattr(tui.dialogs, "variants", quants)
 
     async def go():
         async with app.run_test(size=(120, 36)) as pilot:
