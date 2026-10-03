@@ -10,7 +10,9 @@ import subprocess
 import sys
 import threading
 import time
+import webbrowser
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any, ClassVar, NamedTuple
 
 from rich.text import Text
@@ -50,6 +52,14 @@ DataTable > .datatable--hover { background: $boost; }
 #status { height: 1; padding: 0 2; color: $text-muted; }
 #status.error { color: $error; text-align: left; }
 #status.busy { color: $text; text-align: left; }
+#server-panel {
+    height: auto; margin: 0 1; padding: 0 1; background: $surface; border: round $success 60%;
+    border-title-color: $text; border-title-style: bold; display: none;
+}
+#server-panel.stopped { border: round $error 60%; }
+#server-row { height: auto; }
+#server-info { width: 1fr; }
+#server-panel .buttons { width: auto; margin-top: 0; }
 #keys { height: 1; padding: 0 1; margin-top: 1; background: $panel; }
 #keys Button { width: 15; min-width: 0; padding: 0 1; margin-right: 1; background: transparent; border: none; }
 #keys Button:hover { color: $accent; background: transparent; }
@@ -165,6 +175,8 @@ class Models(App[bool]):
         # One load at a time: two Ask dialogs opened in a row must not hold two models in memory.
         self.load_lock = threading.Lock()
         self.quants: dict[str, list[store.Variant]] = {}  # catalog GGUF repo -> all its quants on Hugging Face
+        self.server: subprocess.Popen[bytes] | None = None  # a server this window started, if any
+        self.server_model: str | None = None  # what that server was started with
         self.snapshot_cache: tuple[dict[str, Any], str, bool, set[str]] | None = None  # to redraw on a theme change
 
     # ---- layout and data --------------------------------------------------------------------------
@@ -177,6 +189,15 @@ class Models(App[bool]):
             panel.border_title = "Models"
             yield DataTable(cursor_type="row")
             yield Static("", id="empty")
+        with Vertical(id="server-panel") as server_panel:
+            server_panel.border_title = "Server"
+            with Horizontal(id="server-row"):
+                yield Static("", id="server-info")
+                yield dialogs.buttons(
+                    ("⧉ Demo", "open_demo", "primary"),
+                    ("↻ Restart", "restart_server", "default"),
+                    ("■ Stop", "stop_server", "error"),
+                )
         yield Static("", id="status")
         with Horizontal(id="keys"):
             for key, label, action in KEY_BAR:
@@ -315,6 +336,7 @@ class Models(App[bool]):
         if keep in self.names:
             table.move_cursor(row=self.names.index(keep))
         self.show_server(server_up)
+        self.show_server_panel(server_up, loaded)
         self.summary = self.describe(have)
         self.query_one("#models-panel").border_subtitle = self.summary
         if not self.busy:
@@ -343,7 +365,7 @@ class Models(App[bool]):
             pill.update(Text("○ server off", style="dim"))
 
     def row_actions(self, name: str, on_disk: bool, is_loaded: bool) -> Text:
-        """Clickable buttons for one row: Download before it is on disk, then Serve, Delete and Stop."""
+        """Clickable buttons for one row: Download before it is on disk, then Serve and Delete."""
 
         def button(label: str, action: str, colour: str) -> Text:
             padded = label.ljust(ROW_BUTTON_WIDTH)
@@ -354,8 +376,6 @@ class Models(App[bool]):
         actions = Text()
         actions.append(button("▶ Serve", "serve_model", self.colour("success")))
         actions.append(button("✕ Delete", "remove", self.colour("error")))
-        if is_loaded:  # Stop only means something while the model is in memory
-            actions.append(button("■ Stop", "unload", self.colour("foreground")))
         return actions
 
     async def action_on_row(self, name: str, action: str) -> None:
@@ -365,7 +385,7 @@ class Models(App[bool]):
         await self.run_action(action)
 
     def action_serve_model(self) -> None:
-        """Serve the selected model: it becomes the default, then the manager leaves and the server starts."""
+        """Serve the selected model: it becomes the default and the server starts (or restarts) with it."""
         name = self.selected()
         if not name or self.refuse_while_busy():
             return
@@ -718,13 +738,97 @@ class Models(App[bool]):
             self.notify(str(exc), severity="error")
 
     def action_serve(self) -> None:
+        """Start the server for the default model in the background; the manager stays open."""
         if self.refuse_while_busy():
+            return
+        if self.server_alive():  # e.g. Serve on another row: restart with the new default
+            self.stop_server(then_start=canonical_or(default_model()))
             return
         if client.server_running():
             self.notify(f"A server is already running at {client.server_url()}", severity="warning")
             return
-        self.release()
-        self.exit(True)
+        self.start_server(canonical_or(default_model()))
+
+    def server_alive(self) -> bool:
+        return self.server is not None and self.server.poll() is None
+
+    def start_server(self, model: str) -> None:
+        """Run `ollajev serve` as a child process. Its log goes where `ollajev serve` always writes it; what it
+        prints goes to server-console.log next to it."""
+        self.release()  # the server loads its own copy; this window's copy would only hold memory
+        log_dir = config.log_dir()
+        log_dir.mkdir(parents=True, exist_ok=True)
+        console = (log_dir / "server-console.log").open("wb")
+        command = [sys.executable, "-m", "ollajev", "serve", model, "--no-browser"]
+        self.server = subprocess.Popen(  # noqa: S603 our own CLI, with a model name the user picked
+            command, stdin=subprocess.DEVNULL, stdout=console, stderr=subprocess.STDOUT, start_new_session=True
+        )
+        console.close()  # the child holds its own handle
+        self.server_model = model
+        self.notify(f"Starting the server for {model} …")
+        self.show_server_panel(False, set())
+
+    @work(thread=True, exclusive=True, group="server")
+    def stop_server(self, then_start: str | None = None) -> None:
+        """Stop the server this window started, off the UI thread; restart it with `then_start` if given."""
+        server = self.server
+        if server is not None and server.poll() is None:
+            server.terminate()
+            try:
+                server.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                server.kill()
+                server.wait()
+        self.server = None
+        if then_start:
+            self.call_from_thread(self.start_server, then_start)
+        else:
+            self.call_from_thread(self.notify, "Server stopped")
+            self.call_from_thread(self.reload)
+
+    def action_stop_server(self) -> None:
+        if self.server_alive():
+            self.stop_server()
+        elif client.server_running():
+            self.notify("This server was started outside this window; stop it there (or: ollajev service)")
+
+    def action_restart_server(self) -> None:
+        if self.server_alive() or self.server is not None:
+            self.stop_server(then_start=self.server_model or canonical_or(default_model()))
+        else:
+            self.notify("No server from this window to restart", severity="warning")
+
+    def action_open_demo(self) -> None:
+        if client.server_running():
+            webbrowser.open(f"{client.server_url()}/demo")
+
+    def show_server_panel(self, server_up: bool, loaded: set[str]) -> None:
+        """The Server panel: shown while a server runs or this window's server starts or has stopped."""
+        panel = self.query_one("#server-panel")
+        ours = self.server is not None
+        starting = self.server_alive() and not server_up
+        crashed = ours and not self.server_alive()
+        panel.display = server_up or ours
+        panel.set_class(crashed, "stopped")
+        for button_id in ("#do-stop_server", "#do-restart_server"):
+            self.query_one(button_id).display = ours
+        self.query_one("#do-open_demo").display = server_up
+        url = client.server_url()
+        log_file = str(config.log_dir() / "server.log").replace(str(Path.home()), "~", 1)
+        info = Text()
+        if crashed:
+            info.append("● stopped", style=f"bold {self.colour('error')}")
+            info.append(f"   the server exited (code {self.server.returncode}); see {log_file}")  # type: ignore[union-attr]
+        elif starting:
+            info.append("◌ starting …", style=f"bold {self.colour('warning')}")
+            info.append(f"   loading {self.server_model}")
+        else:
+            info.append("● running", style=f"bold {self.colour('success')}")
+            info.append(f"   {url}", style="bold")
+            info.append("" if ours else "   started outside this window", style="dim")
+            serving = ", ".join(sorted(loaded)) or "no model loaded yet"
+            info.append(f"\nmodel {serving}  ·  log {log_file}", style="dim")
+        self.query_one("#server-info", Static).update(info)
 
     @work
     async def action_quit_app(self) -> None:
@@ -732,6 +836,11 @@ class Models(App[bool]):
             question = dialogs.Confirm("A download is running", "Quit anyway? The next pull resumes it.")
             if not await self.push_screen_wait(question):
                 return
+        if self.server_alive():
+            question = dialogs.Confirm("The server is running", "Quit and stop the server?")
+            if not await self.push_screen_wait(question):
+                return
+            self.server.terminate()  # type: ignore[union-attr]
         # Stop a download at its next update. A loaded model is not unloaded: the process is about to end,
         # which frees it at once, while unloading it here would freeze the screen first.
         self.cancel.set()
@@ -761,7 +870,7 @@ KEYS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "Server",
         [
-            ("s", "start the server and leave the manager", "serve"),
+            ("s", "start the server here, or restart it", "serve"),
             ("o", "device, address and port for the server", ""),
             ("b", "install or remove the background service", "service"),
         ],

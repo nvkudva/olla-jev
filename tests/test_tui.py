@@ -34,9 +34,64 @@ def drive(app, keys):
     return asyncio.run(go())
 
 
-def test_serve_key_returns_true(app):
-    drive(app, ["s"])
-    assert app.return_value is True
+class FakeServer:
+    """Stands in for the `ollajev serve` child process."""
+
+    started: list = []
+
+    def __init__(self, command, **kwargs):
+        FakeServer.started.append(command)
+        self.returncode = None
+
+    def poll(self):
+        return self.returncode
+
+    def terminate(self):
+        self.returncode = 0
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+    def kill(self):
+        self.returncode = -9
+
+
+def test_serve_starts_the_server_inside_the_manager(app, monkeypatch):
+    monkeypatch.setattr(tui, "system_theme", lambda: "textual-dark")  # it runs a subprocess on macOS
+    monkeypatch.setattr(tui.subprocess, "Popen", FakeServer)
+    FakeServer.started = []
+
+    async def go():
+        async with app.run_test(size=(160, 40)) as pilot:
+            await pilot.press("s")
+            await pilot.pause()
+            panel = app.query_one("#server-panel")
+            info = str(app.query_one("#server-info").render())
+            running_after_s = (app.is_running, panel.display, "starting" in info)
+            await pilot.click("#do-stop_server")
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            return running_after_s, app.server
+
+    (still_open, panel_shown, starting), server = asyncio.run(go())
+    assert still_open and panel_shown and starting
+    assert FakeServer.started and FakeServer.started[0][-3:-1] == ["serve", tui.canonical_or(tui.default_model())]
+    assert server is None
+
+
+def test_quit_asks_before_stopping_a_running_server(app, monkeypatch):
+    monkeypatch.setattr(tui, "system_theme", lambda: "textual-dark")  # it runs a subprocess on macOS
+    monkeypatch.setattr(tui.subprocess, "Popen", FakeServer)
+
+    async def go():
+        async with app.run_test(size=(160, 40)) as pilot:
+            await pilot.press("s")
+            await pilot.pause()
+            await pilot.press("q")
+            await pilot.pause()
+            return type(app.screen).__name__
+
+    assert asyncio.run(go()) == "Confirm"
 
 
 @pytest.mark.parametrize("key", ["q", "ctrl+q"])
@@ -337,7 +392,7 @@ def test_row_actions_offer_download_until_on_disk(app):
         return [word for word in text.plain.split() if word.isalpha()]
 
     assert labels(app.row_actions("a/b", on_disk=False, is_loaded=False)) == ["Download"]
-    assert labels(app.row_actions("a/b", on_disk=True, is_loaded=True)) == ["Serve", "Delete", "Stop"]
+    assert labels(app.row_actions("a/b", on_disk=True, is_loaded=True)) == ["Serve", "Delete"]
     assert labels(app.row_actions("a/b", on_disk=True, is_loaded=False)) == ["Serve", "Delete"]
 
 

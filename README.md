@@ -196,7 +196,7 @@ Run `ollajev <command> --help` for options and an example.
 
 ### Model manager
 
-`ollajev setup` opens one screen for the model commands. Move with the arrow keys or the mouse. Every row has buttons: Download for a model not on disk yet, then Serve, Stop and Delete. The key bar under the list and the buttons in every dialog can be clicked too. The keys:
+`ollajev setup` opens one screen for the model commands. Move with the arrow keys or the mouse. Every row has buttons: Download for a model not on disk yet, then Serve and Delete. Serve starts the server right there: a Server panel shows its address and model, with Demo, Restart and Stop; quitting the manager stops it. The key bar under the list and the buttons in every dialog can be clicked too. The keys:
 
 | Key | Same as | What it does |
 |---|---|---|
@@ -211,7 +211,7 @@ Run `ollajev <command> --help` for options and an example.
 | `n` | `pull` | add any Hugging Face repo by name |
 | `o` | | device, address and port for the server |
 | `b` | `service` | install or remove the background service |
-| `s` | `serve` | start the server and leave the manager |
+| `s` | `serve` | start the server for the default model, or restart it |
 | `/` | | filter the list by name |
 | Ctrl+R | | refresh the list |
 | `e` | | the last error in full |
