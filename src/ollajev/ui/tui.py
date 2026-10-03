@@ -59,6 +59,8 @@ class Models(App[bool]):
         Binding("i", "info", "Info", show=False),
         Binding("o", "options", "Options", show=False),
         Binding("b", "service", "Service", show=False),
+        Binding("slash", "filter", "Filter", show=False),
+        Binding("ctrl+r", "reload_list", "Refresh", show=False),
         Binding("e", "last_error", "Error", show=False),
         Binding("escape", "cancel_job", "Cancel", show=False),
     ]
@@ -67,6 +69,8 @@ class Models(App[bool]):
         super().__init__()
         self.names: list[str] = []
         self.sizes: dict[str, str] = {}  # model name -> the size shown in its row
+        self.summary = ""  # the idle status line: default, loaded, disk use, server
+        self.filter_text = ""  # `/` shows only the models whose name contains it
         self.busy = False
         self.cancel = threading.Event()  # set by Esc; a download in progress stops at its next update
         self.downloading = False  # only downloads can be cancelled; loads and asks run to the end
@@ -113,7 +117,7 @@ class Models(App[bool]):
             first_line = self.last_error.splitlines()[0]
             self.say(f"! {first_line}  (e for details)")
         else:
-            self.say("Enter downloads a model and makes it the default. Press s to serve it.")
+            self.say(self.summary)
 
     def action_help(self) -> None:
         self.push_screen(dialogs.Info("Keys", KEYS_HELP))
@@ -154,6 +158,8 @@ class Models(App[bool]):
             for name, m in have.items()
             if name not in listed
         ]
+        if self.filter_text:
+            rows = [row for row in rows if self.filter_text.lower() in row[0].lower()]
         table = self.query_one(DataTable)
         keep = self.names[table.cursor_row] if self.names and table.row_count else None
         table.clear()
@@ -167,6 +173,34 @@ class Models(App[bool]):
         if keep in self.names:
             table.move_cursor(row=self.names.index(keep))
         self.sub_title = f"server running at {client.server_url()}" if server_up else "server not running"
+        self.summary = self.describe(default, loaded, have, server_up)
+        if not self.busy:
+            self.say_idle()
+
+    def describe(self, default: str, loaded: set[str], have: dict[str, Any], server_up: bool) -> str:
+        on_disk = sum(model["size"] for model in have.values())
+        server = client.server_url() if server_up else "not running"
+        parts = [
+            f"default {default}",
+            f"loaded {', '.join(sorted(loaded)) or 'none'}",
+            f"{len(have)} on disk ({dialogs.human(on_disk)})",
+            f"server {server}",
+        ]
+        if self.filter_text:
+            parts.append(f"filter '{self.filter_text}'")
+        parts.append("? keys")
+        return " · ".join(parts)
+
+    @work
+    async def action_filter(self) -> None:
+        """`/`: show only matching models; an empty filter shows them all again."""
+        text = await self.push_screen_wait(dialogs.Prompt("Filter models", "part of a name; empty shows all"))
+        self.filter_text = text or ""
+        self.reload()
+
+    def action_reload_list(self) -> None:
+        self.reload()
+        self.notify("Refreshed")
 
     def selected(self) -> str | None:
         table = self.query_one(DataTable)
@@ -481,6 +515,8 @@ x       delete the download                        (rm)
 u       unload it from memory                      (stop)
 a       give it a short name                       (cp)
 i       family, commit, limits, path               (show)
+/       filter the list by name
+ctrl+r  refresh the list
 o       device, address and port for the server
 b       install or remove the background service   (service)
 s       start the server and leave the manager     (serve)

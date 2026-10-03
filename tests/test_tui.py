@@ -199,3 +199,20 @@ def test_download_progress_shows_on_the_status_line(app, monkeypatch):
 
     status = asyncio.run(go())
     assert "500.0 MB / 2.0 GB · 25%" in status and "esc cancels" in status
+
+
+def test_status_line_and_filter(app):
+    async def go():
+        async with app.run_test(size=(160, 36)) as pilot:
+            status = str(app.query_one("#status").render())
+            await pilot.press("slash")
+            await pilot.pause()
+            for key in "julia":
+                await pilot.press(key)
+            await pilot.press("enter")
+            await pilot.pause()
+            return status, list(app.names)
+
+    status, names = asyncio.run(go())
+    assert "default " in status and "on disk" in status and "server not running" in status
+    assert names and all("julia" in name.lower() for name in names)
