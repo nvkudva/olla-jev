@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,6 +14,7 @@ from huggingface_hub.errors import CacheNotFound, LocalEntryNotFoundError, Repos
 from huggingface_hub.constants import HF_HUB_CACHE
 from huggingface_hub.file_download import repo_folder_name
 from huggingface_hub.utils import filter_repo_objects
+from huggingface_hub.utils import tqdm as hf_tqdm
 
 from . import config, names
 from .adapters import Family, detect
@@ -311,16 +313,42 @@ def local_path(r: Resolved) -> str | None:
         return None
 
 
-def download(r: Resolved) -> str:
+class Cancelled(Exception):
+    pass
+
+
+def _cancellable(cancel: threading.Event | None) -> type[hf_tqdm] | None:
+    """A progress bar class that aborts the download at its next update once `cancel` is set. Partial files stay
+    in the cache, so the next pull resumes."""
+    if cancel is None:
+        return None
+
+    class Bar(hf_tqdm):
+        def update(self, n: float | None = 1) -> bool | None:
+            if cancel.is_set():
+                raise Cancelled
+            return super().update(n)
+
+    return Bar
+
+
+def download(r: Resolved, cancel: threading.Event | None = None) -> str:
     """Fetch the snapshot, then pin the repo to this commit if it has no pin yet. A copy also fetches its base's
-    config files and records which base commit they came from."""
+    config files and records which base commit they came from. Setting `cancel` aborts it with Cancelled."""
+    bar = _cancellable(cancel)
     if r.base:
         snapshot_download(
-            r.base.repo_id, revision=r.base.revision, allow_patterns=r.base.allow, cache_dir=config.models_dir()
+            r.base.repo_id,
+            revision=r.base.revision,
+            allow_patterns=r.base.allow,
+            cache_dir=config.models_dir(),
+            tqdm_class=bar,
         )
         with config.edit() as data:
             data.setdefault("bases", {})[r.repo_id] = {"repo": r.base.repo_id, "revision": r.base.revision}
-    path = snapshot_download(r.repo_id, revision=r.revision, allow_patterns=r.allow, cache_dir=config.models_dir())
+    path = snapshot_download(
+        r.repo_id, revision=r.revision, allow_patterns=r.allow, cache_dir=config.models_dir(), tqdm_class=bar
+    )
     if r.repo_id not in pins():
         _pin(r.repo_id, r.revision, r.created)
     return path

@@ -93,3 +93,43 @@ def test_the_model_list_shows_every_quant_of_a_catalog_gguf_repo(app, monkeypatc
     repo = next(e.name for e in CATALOG if ":" in e.name).partition(":")[0]
     assert f"{repo}:Q4_K_M" in names and f"{repo}:Q8_0" in names
     assert len(names) == len(set(names))
+
+
+def test_escape_cancels_a_running_download(app, monkeypatch):
+    from types import SimpleNamespace
+
+    r = SimpleNamespace(repo_id="u/r", family=SimpleNamespace(runs_repo_code=False), ref=SimpleNamespace(name="u/r"))
+    started = {"set": False}
+
+    def download(r, cancel):
+        started["set"] = True
+        cancel.wait(10)
+        raise tui.store.Cancelled
+
+    def resolve(name, online=True):
+        if not online:  # the model list asks offline whether each is downloaded
+            raise LookupError(name)
+        return r
+
+    monkeypatch.setattr(tui.store, "resolve", resolve)
+    monkeypatch.setattr(tui.store, "download", download)
+    monkeypatch.setattr(tui, "canonical", lambda r: r.repo_id)
+
+    async def go():
+        async with app.run_test(size=(120, 36)) as pilot:
+            assert app.query_one(DataTable).row_count == len(CATALOG)
+            await pilot.press("p")
+            for _ in range(100):
+                if started["set"]:
+                    break
+                await pilot.pause(0.05)
+            else:
+                pytest.fail(f"download never started: selected={app.selected()!r} busy={app.busy}")
+            await pilot.press("escape")
+            for _ in range(100):
+                await pilot.pause(0.05)
+                if not app.busy:
+                    return
+            pytest.fail("download was not cancelled")
+
+    asyncio.run(go())

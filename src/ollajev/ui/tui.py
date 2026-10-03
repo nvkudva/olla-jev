@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from typing import Any, ClassVar
 
 from textual import work
@@ -305,6 +306,7 @@ class Models(App[bool]):
         Binding("o", "options", "Options"),
         Binding("b", "service", "Service"),
         Binding("s", "serve", "Serve"),
+        Binding("escape", "cancel_job", "Cancel"),
         Binding("q", "quit_app", "Quit"),
     ]
 
@@ -312,6 +314,7 @@ class Models(App[bool]):
         super().__init__()
         self.names: list[str] = []
         self.busy = False
+        self.cancel = threading.Event()  # set by Esc; a download in progress stops at its next update
         self.local: tuple[str, Any, Any] | None = None  # model, ask, release: loaded in this process
         self.quants: dict[str, list[store.Variant]] = {}  # catalog GGUF repo -> all its quants on Hugging Face
 
@@ -419,9 +422,13 @@ class Models(App[bool]):
             self.notify("Wait for the current job to finish", severity="warning")
             return None
         self.busy = True
+        self.cancel.clear()
         self.say(text)
         try:
             return await work_fn()
+        except store.Cancelled:
+            self.notify("Cancelled; a later pull resumes where it stopped", severity="warning")
+            return None
         except Exception as exc:
             log.exception("%s failed", text)
             self.notify(str(exc) or type(exc).__name__, severity="error", timeout=10)
@@ -430,6 +437,11 @@ class Models(App[bool]):
             self.busy = False
             self.reload()
             self.say("")
+
+    def action_cancel_job(self) -> None:
+        if self.busy:
+            self.cancel.set()
+            self.say("Cancelling …")
 
     async def fetch(self, name: str) -> store.Resolved | None:
         r = await asyncio.to_thread(lambda: store.resolve(lookup(name)))
@@ -445,7 +457,7 @@ class Models(App[bool]):
                 return None
             store.trust(r)
         self.say(f"Downloading {canonical(r)} …")
-        await asyncio.to_thread(store.download, r)
+        await asyncio.to_thread(store.download, r, self.cancel)
         prefetch = getattr(r.family, "prefetch", None)
         if prefetch:
             self.say("Downloading the base model …")

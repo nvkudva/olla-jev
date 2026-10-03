@@ -330,3 +330,22 @@ def test_load_refuses_a_model_that_does_not_fit_in_free_memory(monkeypatch, tmp_
     r = SimpleNamespace(revision="r" * 12, family=None)
     with pytest.raises(NotEnoughMemory, match="needs about .* but only .* free on cpu"):
         manager.Manager()._load("m", r)
+
+
+def test_a_cancelled_download_stops_at_its_next_progress_update(monkeypatch):
+    import threading
+    from types import SimpleNamespace
+
+    from ollajev import store
+
+    def snapshot_download(*args, tqdm_class, **kwargs):
+        bar = tqdm_class(total=10, disable=True)
+        bar.update(1)
+        cancel.set()
+        bar.update(1)
+
+    cancel = threading.Event()
+    monkeypatch.setattr(store, "snapshot_download", snapshot_download)
+    r = SimpleNamespace(repo_id="u/r", revision="a" * 40, allow=None, base=None)
+    with pytest.raises(store.Cancelled):
+        store.download(r, cancel)
