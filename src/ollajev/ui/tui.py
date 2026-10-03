@@ -100,8 +100,8 @@ class Models(App[bool]):
     def say(self, text: str) -> None:
         self.query_one("#status", Static).update(text)
 
-    def loaded(self) -> set[str]:
-        if client.server_running():
+    def loaded(self, server_up: bool) -> set[str]:
+        if server_up:
             try:
                 return {m["name"] for m in client.call("GET", "/api/ps")["models"]}
             except SystemExit:
@@ -111,7 +111,8 @@ class Models(App[bool]):
     def reload(self) -> None:
         have = {m["name"]: m for m in admin.tags()}
         default = canonical_or(default_model())
-        loaded = self.loaded()
+        server_up = client.server_running()  # each probe can wait 0.5 s, so probe once per reload
+        loaded = self.loaded(server_up)
         rows = []
         for i, e in enumerate(CATALOG):
             rows.append((e.name, e.name in have, f"{e.size_gb:.1f} GB", e.languages))
@@ -139,8 +140,7 @@ class Models(App[bool]):
             self.names.append(name)
         if keep in self.names:
             table.move_cursor(row=self.names.index(keep))
-        running = client.server_running()
-        self.sub_title = f"server running at {client.server_url()}" if running else "server not running"
+        self.sub_title = f"server running at {client.server_url()}" if server_up else "server not running"
 
     def selected(self) -> str | None:
         table = self.query_one(DataTable)
